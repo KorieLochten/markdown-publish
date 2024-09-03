@@ -45,7 +45,6 @@ export const PublishModal = ({ modal }: { modal: Modal }) => {
         setCurrentFile(currentFile.file.path);
       } else {
         new Notice("No markdown file is being viewed");
-        modal.close();
       }
     };
     load();

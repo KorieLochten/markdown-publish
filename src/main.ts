@@ -1,4 +1,11 @@
-import { addIcon, App, Plugin, PluginManifest } from "obsidian";
+import {
+  addIcon,
+  App,
+  MarkdownView,
+  Notice,
+  Plugin,
+  PluginManifest
+} from "obsidian";
 import { createServices, type Services } from "./services";
 import { DEFAULT_SETTINGS, Settings } from "./settings";
 import { createReactModal } from "./ui/modal";
@@ -22,7 +29,27 @@ export default class MediumPublishPlugin extends Plugin {
     }
 
     this.addRibbonIcon("medium", "Publish to Medium", async () => {
-      createReactModal(this, "PublishModal").open();
+      const currentFile = this.app.workspace.getActiveViewOfType(MarkdownView);
+      if (currentFile) {
+        const element = document.querySelector(
+          ".workspace-leaf.mod-active .workspace-leaf-content"
+        ) as HTMLElement;
+
+        if (element.getAttribute("data-mode") !== "source") {
+          new Notice("Please open a markdown in editing mode");
+          return;
+        }
+
+        if (!element.querySelector(".is-live-preview")) {
+          new Notice("Please turn off source mode");
+          return;
+        }
+
+        createReactModal(this, "PublishModal").open();
+      } else {
+        new Notice("No markdown file is being viewed");
+        return;
+      }
     });
   }
 

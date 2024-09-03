@@ -95,6 +95,12 @@ type FootnoteUrlToken = {
   id: string;
 };
 
+type TableToken = {
+  type: "table";
+  lineStart: number;
+  lineEnd: number;
+};
+
 type Token =
   | ImageToken
   | BreakToken
@@ -111,6 +117,7 @@ type Token =
   | CodeBlockToken
   | FootnoteToken
   | FootnoteUrlToken
+  | TableToken
   | CodeToken
   | HeadingToken;
 
@@ -128,6 +135,7 @@ type TokenizerState =
   | "BACKTICKS"
   | "BRACKET"
   | "PARENTHESIS"
+  | "VERTICAL_BAR"
   | "QUOTE";
 
 type TokenizerRules = {
@@ -153,6 +161,7 @@ type TokenizerRules = {
   handleList?: boolean;
   handleCode?: boolean;
   handleHeading?: boolean;
+  handleVerticalBar?: boolean;
 };
 
 export const DEFAULT_TOKENIZER_RULES: TokenizerRules = {
@@ -177,7 +186,8 @@ export const DEFAULT_TOKENIZER_RULES: TokenizerRules = {
   handleQuote: true,
   handleList: true,
   handleHeading: true,
-  handleCode: true
+  handleCode: true,
+  handleVerticalBar: true
 };
 
 export const tokenizer = (
@@ -236,6 +246,7 @@ export const tokenizer = (
     if (index >= lines.length) {
       break;
     }
+
     let cursor = 0;
     let line = lines[index];
 
@@ -247,6 +258,13 @@ export const tokenizer = (
       switch (state) {
         case "TEXT":
           switch (char) {
+            case "|":
+              if (!hasWritten && rules.handleVerticalBar) {
+                state = "VERTICAL_BAR";
+              } else {
+                buffer += char;
+              }
+              break;
             case " ":
               if (cursor === 0) {
                 let count = 1;
@@ -421,6 +439,118 @@ export const tokenizer = (
               break;
           }
           break;
+        case "VERTICAL_BAR":
+          let isValidTable = false;
+
+          for (let i = cursor - 1; i < line.length; i++) {
+            if (line[i] !== "|") {
+              let hasEnd = false;
+              for (let j = i; j < line.length; j++) {
+                if (line[j] === "|" && line[j + 1] !== "|") {
+                  isValidTable = true;
+                  hasEnd = true;
+                  i = j;
+                  break;
+                }
+              }
+
+              if (!hasEnd) {
+                break;
+              }
+            }
+          }
+
+          if (isValidTable) {
+            let columnState: "BEFORE_HYPHEN" | "HYPHEN" | "AFTER_HYPHEN" =
+              "BEFORE_HYPHEN";
+
+            let isNextLineValid = true;
+            let nextLine = lines[index + 1];
+
+            if (nextLine && nextLine[0] === "|") {
+              for (let i = 1; i < nextLine.length; i++) {
+                if (!isNextLineValid) break;
+
+                switch (columnState) {
+                  case "BEFORE_HYPHEN": {
+                    if (nextLine[i] === "-") {
+                      columnState = "HYPHEN";
+                    } else if (nextLine[i] !== " ") {
+                      isNextLineValid = false;
+                      break;
+                    }
+                    break;
+                  }
+                  case "HYPHEN": {
+                    if (nextLine[i] !== "-") {
+                      switch (nextLine[i]) {
+                        case " ":
+                          columnState = "AFTER_HYPHEN";
+                          break;
+                        case "|":
+                          columnState = "BEFORE_HYPHEN";
+                          break;
+                        default:
+                          isNextLineValid = false;
+                          break;
+                      }
+                    }
+                    break;
+                  }
+                  case "AFTER_HYPHEN": {
+                    if (nextLine[i] !== " ") {
+                      if (nextLine[i] === "|") {
+                        isNextLineValid = true;
+                        columnState = "BEFORE_HYPHEN";
+                      } else {
+                        isNextLineValid = false;
+                      }
+                    }
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (isNextLineValid) {
+              let charCount = 0;
+
+              for (let i = 0; i < index; i++) {
+                charCount += lines[i].length + 1;
+              }
+
+              let tableIndex = index + 1;
+
+              let barCharCount =
+                charCount + line.length + 1 + nextLine.length + 1;
+              for (let i = tableIndex + 1; i < lines.length; i++) {
+                if (lines[i][0] === "|") {
+                  tableIndex = i;
+                  barCharCount += lines[i].length + 1;
+                } else {
+                  break;
+                }
+              }
+
+              tokens.push({
+                type: "table",
+                lineStart: charCount,
+                lineEnd: barCharCount - 1
+              });
+
+              cursor = line.length + 1;
+              index = tableIndex;
+              state = "TEXT";
+
+              break;
+            }
+          }
+
+          buffer += "|";
+          cursor--;
+          state = "TEXT";
+          hasWritten = true;
+          break;
         case "BACKTICKS": {
           let count = 1;
           for (let i = cursor; i < line.length; i++) {
@@ -448,7 +578,7 @@ export const tokenizer = (
               index = lines.length;
             }
 
-            cursor = line.length + 1;
+            cursor = line.length;
 
             tokens.push({
               type: "codeBlock",
@@ -1142,6 +1272,7 @@ export const parser = async (
   app: App,
   element?: HTMLElement
 ): Promise<HTMLElement> => {
+  console.log(tokens);
   const container = element || document.createElement("div");
 
   let elementQueue: HTMLElement[] = [];
@@ -1478,6 +1609,47 @@ export const parser = async (
 
         footnotes[display] = footnote;
         break;
+      }
+      case "table": {
+        for (const block of cmEmbeds) {
+          console.log(block);
+          const cmViewObject = Object.assign({}, block) as any;
+          const cmView = Object.assign({}, cmViewObject["cmView"]);
+          const widget = cmView["widget"];
+          console.log(token, widget);
+
+          if (
+            widget &&
+            widget.start === token.lineStart &&
+            widget.end === token.lineEnd
+          ) {
+            const embedContainer = block.firstChild as HTMLElement;
+            if (embedContainer) {
+              const imageSrc = `medium-assets/obsidian-table-widget-${token.lineStart}-${token.lineEnd}.png`;
+              const imageBlock = createImage(imageSrc, "Code Block Widget");
+
+              embedContainer.style.backgroundColor =
+                "var(--background-primary)";
+              embedContainer.style.color = "var(--text-normal)";
+
+              const { width, height } = await saveHtmlAsPng(
+                app,
+                embedContainer,
+                imageSrc
+              );
+
+              const image = imageBlock.querySelector("img") as HTMLImageElement;
+              image.setAttribute("data-width", width.toString());
+              image.setAttribute("data-height", height.toString());
+              imageBlock.style.maxWidth = `${width}px`;
+              imageBlock.style.maxHeight = `${height}px`;
+
+              container.appendChild(imageBlock);
+
+              break;
+            }
+          }
+        }
       }
     }
   }

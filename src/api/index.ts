@@ -83,8 +83,6 @@ export class MediumPublishAPI {
     } else {
       new Notice("Error: " + response.body);
     }
-
-    return null;
   }
 
   async uploadImage(file: TFile) {

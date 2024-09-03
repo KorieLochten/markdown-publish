@@ -130,7 +130,60 @@ type TokenizerState =
   | "PARENTHESIS"
   | "QUOTE";
 
-export const tokenizer = (markdown: string): Token[] => {
+type TokenizerRules = {
+  handleAsterisk?: {
+    handleBulletList: boolean;
+    handleBold: boolean;
+    handleItalic: boolean;
+    handleHorizontalRule: boolean;
+  };
+  handleUnderscore?: {
+    handleItalic: boolean;
+    handleBold: boolean;
+    handleHorizontalRule: boolean;
+  };
+  handleBacktick?: {
+    handleCodeBlock: boolean;
+    handleCode: boolean;
+  };
+  handleHyphens?: boolean;
+  handleExclamation?: boolean;
+  handleBracket?: boolean;
+  handleQuote?: boolean;
+  handleList?: boolean;
+  handleCode?: boolean;
+  handleHeading?: boolean;
+};
+
+export const DEFAULT_TOKENIZER_RULES: TokenizerRules = {
+  handleAsterisk: {
+    handleBulletList: true,
+    handleBold: true,
+    handleItalic: true,
+    handleHorizontalRule: true
+  },
+  handleUnderscore: {
+    handleItalic: true,
+    handleBold: true,
+    handleHorizontalRule: true
+  },
+  handleBacktick: {
+    handleCodeBlock: true,
+    handleCode: true
+  },
+  handleHyphens: true,
+  handleExclamation: true,
+  handleBracket: true,
+  handleQuote: true,
+  handleList: true,
+  handleHeading: true,
+  handleCode: true
+};
+
+export const tokenizer = (
+  markdown: string,
+  rules: TokenizerRules = DEFAULT_TOKENIZER_RULES
+): Token[] => {
   const tokens: Token[] = [];
   let lines = markdown.split("\n");
 
@@ -205,7 +258,7 @@ export const tokenizer = (markdown: string): Token[] => {
                   }
                 }
 
-                if (count >= 4) {
+                if (count >= 4 && rules.handleCode) {
                   let content = line.slice(cursor);
                   tokens.push({
                     type: "code",
@@ -221,7 +274,7 @@ export const tokenizer = (markdown: string): Token[] => {
               }
               break;
             case "\t":
-              if (!hasWritten) {
+              if (!hasWritten && rules.handleCode) {
                 let content = line.slice(cursor);
                 tokens.push({
                   type: "code",
@@ -242,7 +295,12 @@ export const tokenizer = (markdown: string): Token[] => {
             case "7":
             case "8":
             case "9":
-              if (!hasWritten && nextChar === "." && line[cursor + 2] === " ") {
+              if (
+                !hasWritten &&
+                nextChar === "." &&
+                line[cursor + 2] === " " &&
+                rules.handleList
+              ) {
                 flushBuffer();
                 tokens.push({
                   type: "orderedList",
@@ -259,7 +317,7 @@ export const tokenizer = (markdown: string): Token[] => {
               }
               break;
             case "#":
-              if (cursor === 0) {
+              if (cursor === 0 && rules.handleHeading) {
                 flushBuffer();
                 state = "HEADING";
                 currentLevel = 1;
@@ -269,15 +327,23 @@ export const tokenizer = (markdown: string): Token[] => {
               hasWritten = true;
               break;
             case "*":
-              state = "ASTERISK";
-              flushBuffer();
+              if (rules.handleAsterisk) {
+                state = "ASTERISK";
+                flushBuffer();
+              } else {
+                buffer += char;
+              }
               break;
             case "_":
-              state = "UNDER_SCORE";
-              flushBuffer();
+              if (rules.handleUnderscore) {
+                state = "UNDER_SCORE";
+                flushBuffer();
+              } else {
+                buffer += char;
+              }
               break;
             case "+":
-              if (nextChar === " " && !hasWritten) {
+              if (nextChar === " " && !hasWritten && rules.handleList) {
                 tokens.push({
                   type: "unorderedList"
                 });
@@ -296,7 +362,11 @@ export const tokenizer = (markdown: string): Token[] => {
               hasWritten = true;
               break;
             case "!":
-              state = "EXCLAMATION";
+              if (rules.handleExclamation) {
+                state = "EXCLAMATION";
+              } else {
+                buffer += char;
+              }
               break;
             case ">":
               if (!hasWritten) {
@@ -334,8 +404,12 @@ export const tokenizer = (markdown: string): Token[] => {
               }
               break;
             case "`":
-              flushBuffer();
-              state = "BACKTICKS";
+              if (rules.handleBacktick) {
+                flushBuffer();
+                state = "BACKTICKS";
+              } else {
+                buffer += char;
+              }
               break;
             default:
               if (char) {
@@ -347,7 +421,7 @@ export const tokenizer = (markdown: string): Token[] => {
               break;
           }
           break;
-        case "BACKTICKS":
+        case "BACKTICKS": {
           let count = 1;
           for (let i = cursor; i < line.length; i++) {
             if (line[i] === "`") {
@@ -356,7 +430,8 @@ export const tokenizer = (markdown: string): Token[] => {
               break;
             }
           }
-          if (count >= 3) {
+
+          if (count >= 3 && rules.handleBacktick.handleCodeBlock) {
             let language = line.slice(cursor + count - 1).split(" ")[0];
             let content = "";
             let hasEnd = false;
@@ -384,7 +459,7 @@ export const tokenizer = (markdown: string): Token[] => {
             });
 
             state = "TEXT";
-          } else {
+          } else if (count === 2 && rules.handleBacktick.handleCode) {
             let hasEnd = false;
             let backtickCursor = cursor + count - 1;
             for (let i = cursor; i < line.length; i++) {
@@ -424,8 +499,12 @@ export const tokenizer = (markdown: string): Token[] => {
             });
 
             state = "TEXT";
+          } else {
+            buffer += "`" + char;
+            state = "TEXT";
           }
           break;
+        }
         case "HYPHENS":
           switch (char) {
             case " ":
@@ -782,7 +861,7 @@ export const tokenizer = (markdown: string): Token[] => {
         case "ASTERISK":
         case "UNDER_SCORE": {
           let target: string = state === "ASTERISK" ? "*" : "_";
-          // the character before the asterisk
+
           let prevChar = cursor > 1 ? line[cursor - 2] : null;
           if (char == " ") {
             let count = 2;
@@ -808,7 +887,11 @@ export const tokenizer = (markdown: string): Token[] => {
                 }
               }
 
-              if (!hasCharacters) {
+              if (
+                !hasCharacters && state == "ASTERISK"
+                  ? rules.handleAsterisk.handleHorizontalRule
+                  : rules.handleUnderscore.handleHorizontalRule
+              ) {
                 tokens.push({
                   type: "horinzontalRule"
                 });
@@ -819,7 +902,11 @@ export const tokenizer = (markdown: string): Token[] => {
               }
             }
 
-            if (!hasWritten && state === "ASTERISK") {
+            if (
+              !hasWritten &&
+              state === "ASTERISK" &&
+              rules.handleAsterisk.handleBulletList
+            ) {
               hasWritten = true;
               pushAndAdd({
                 type: "unorderedList"
@@ -847,7 +934,11 @@ export const tokenizer = (markdown: string): Token[] => {
               }
             }
 
-            if (!hasCharacters) {
+            if (
+              !hasCharacters && state == "ASTERISK"
+                ? rules.handleAsterisk.handleHorizontalRule
+                : rules.handleUnderscore.handleHorizontalRule
+            ) {
               tokens.push({
                 type: "horinzontalRule"
               });
@@ -1226,6 +1317,9 @@ export const parser = async (
         const code = document.createElement("span");
         let language = convertLanguageToValid(token.language);
         let isValidLang = isValidLanguage(language);
+
+        let found = false;
+
         if (!isValidLang) {
           for (const block of cmEmbeds) {
             const cmViewObject = Object.assign({}, block) as any;
@@ -1261,27 +1355,53 @@ export const parser = async (
                 imageBlock.style.maxHeight = `${height}px`;
 
                 container.appendChild(imageBlock);
+
+                found = true;
                 break;
               }
             }
           }
-        } else {
-          codeBlock.setAttribute(
-            "data-code-block-mode",
-            isValidLang ? "2" : "1"
-          );
-          codeBlock.setAttribute("data-testid", "editorCodeBlockParagraph");
-          codeBlock.setAttribute("data-code-block-lang", language);
-          codeBlock.appendChild(code);
-          code.setAttribute("data-testid", "editorParagraphText");
+
+          if (found) break;
+        }
+        codeBlock.setAttribute(
+          "data-code-block-mode",
+          isValidLang ? "2" : language.length > 0 ? "1" : "0"
+        );
+        codeBlock.setAttribute("data-testid", "editorCodeBlockParagraph");
+        codeBlock.setAttribute("data-code-block-lang", language);
+        code.setAttribute("data-testid", "editorParagraphText");
+
+        if (language.length > 0) {
           code.className = token.language;
           code.textContent =
             language === "html" || language === "xml"
               ? htmlEntities(token.content)
               : token.content;
-
-          container.appendChild(codeBlock);
+        } else {
+          await parser(
+            tokenizer(token.content, {
+              handleAsterisk: {
+                handleBold: true,
+                handleBulletList: false,
+                handleHorizontalRule: false,
+                handleItalic: true
+              },
+              handleUnderscore: {
+                handleBold: true,
+                handleHorizontalRule: false,
+                handleItalic: true
+              },
+              handleList: false,
+              handleCode: false
+            }),
+            app,
+            code
+          );
         }
+
+        codeBlock.appendChild(code);
+        container.appendChild(codeBlock);
 
         break;
       }

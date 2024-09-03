@@ -1124,6 +1124,19 @@ export const tokenizer = (
   return tokens;
 };
 
+const superscriptMap: { [key: string]: string } = {
+  "0": "\u2070",
+  "1": "\u00B9",
+  "2": "\u00B2",
+  "3": "\u00B3",
+  "4": "\u2074",
+  "5": "\u2075",
+  "6": "\u2076",
+  "7": "\u2077",
+  "8": "\u2078",
+  "9": "\u2079"
+};
+
 export const parser = async (
   tokens: Token[],
   app: App,
@@ -1419,28 +1432,21 @@ export const parser = async (
       case "footnoteUrl": {
         const link = document.createElement("a");
         let url = `#${token.id}`;
-        let display: string;
+
+        let id: string;
         if (footnoteMap[token.id]) {
-          display = footnoteMap[token.id];
+          id = footnoteMap[token.id];
         } else {
-          display = Object.keys(footnoteMap).length + 1 + "";
-          footnoteMap[token.id] = display;
+          id = Object.keys(footnoteMap).length + 1 + "";
+          footnoteMap[token.id] = id;
         }
 
-        const superscriptMap: { [key: string]: string } = {
-          "0": "\u2070",
-          "1": "\u00B9",
-          "2": "\u00B2",
-          "3": "\u00B3",
-          "4": "\u2074",
-          "5": "\u2075",
-          "6": "\u2076",
-          "7": "\u2077",
-          "8": "\u2078",
-          "9": "\u2079"
-        };
+        let display: string = "";
+        for (let i = 0; i < id.length; i++) {
+          display += superscriptMap[id[i]];
+        }
 
-        link.textContent = superscriptMap[display];
+        link.textContent = display;
         link.href = url;
 
         if (elementQueue.length > 0) {

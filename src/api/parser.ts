@@ -1272,7 +1272,6 @@ export const parser = async (
   app: App,
   element?: HTMLElement
 ): Promise<HTMLElement> => {
-  console.log(tokens);
   const container = element || document.createElement("div");
 
   let elementQueue: HTMLElement[] = [];
@@ -1612,11 +1611,9 @@ export const parser = async (
       }
       case "table": {
         for (const block of cmEmbeds) {
-          console.log(block);
           const cmViewObject = Object.assign({}, block) as any;
           const cmView = Object.assign({}, cmViewObject["cmView"]);
           const widget = cmView["widget"];
-          console.log(token, widget);
 
           if (
             widget &&
@@ -1669,8 +1666,6 @@ export const parser = async (
       container.appendChild(footnotes[key]);
     }
   }
-
-  console.log(container);
 
   return container;
 };

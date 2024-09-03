@@ -227,19 +227,24 @@ export const tokenizer = (
     );
 
     const tokensToReopen: Token[] = [];
-    openTokens = openTokens.filter((openToken, i) => {
+    const newOpenTokens: Token[] = [];
+
+    for (let i = openTokens.length - 1; i >= 0; i--) {
       if (i >= index) {
-        tokens.push(openToken);
+        tokens.push(openTokens[i]);
+
         if (i !== index) {
-          tokensToReopen.push(openToken);
-        } else {
-          return false;
+          tokensToReopen.push(openTokens[i]);
         }
       }
-      return true;
-    });
+
+      if (i !== index) {
+        newOpenTokens.push(openTokens[i]);
+      }
+    }
 
     tokens.push(...tokensToReopen);
+    openTokens = newOpenTokens.reverse();
   };
 
   while (true) {

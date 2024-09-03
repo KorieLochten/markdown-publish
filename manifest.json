@@ -1,0 +1,7 @@
+{
+  "id": "medium-publish-plugin",
+  "name": "Medium Publish",
+  "description": "Publish your notes to Medium",
+  "author": "KorieDrakeChaney",
+  "repo": "https://github.com/KorieDrakeChaney/medium-publish"
+}

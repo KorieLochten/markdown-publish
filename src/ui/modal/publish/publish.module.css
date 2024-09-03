@@ -1,0 +1,141 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.tag {
+  border-radius: 8px;
+  background-color: var(--background-primary-alt);
+  display: flex;
+  justify-content: space-between;
+  padding: 10px;
+  gap: 10px;
+  width: 100px;
+  align-items: center;
+}
+
+.delete-button {
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.delete-button:hover {
+  color: var(--text-normal);
+}
+
+.tags-container {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 40px;
+}
+
+.publish-container {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.publish-input {
+  display: flex;
+  flex-direction: column;
+}
+
+.publish-label {
+  color: var(--text-faint);
+}
+
+.publish-status-container {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2.5px;
+}
+
+.publish-status-button {
+  text-align: center;
+  border-radius: 4px;
+  background-color: var(--background-primary-alt);
+  padding: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.publish-status-button:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.publish-status-button.active {
+  background-color: hsl(
+    var(--accent-h),
+    var(--accent-s),
+    calc(var(--accent-l) - 5%)
+  );
+}
+
+.publish-status-button.active:hover {
+  background-color: hsl(
+    var(--accent-h),
+    var(--accent-s),
+    calc(var(--accent-l) - 10%)
+  );
+}
+
+.publish-content-type-container {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 2.5px;
+}
+
+.publish-content-type-button {
+  text-align: center;
+  border-radius: 4px;
+  background-color: var(--background-primary-alt);
+  padding: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.publish-content-type-button:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+.publish-content-type-button.active {
+  background-color: hsl(
+    var(--accent-h),
+    var(--accent-s),
+    calc(var(--accent-l) - 5%)
+  );
+}
+
+.publish-content-type-button.active:hover {
+  background-color: hsl(
+    var(--accent-h),
+    var(--accent-s),
+    calc(var(--accent-l) - 10%)
+  );
+}
+
+.publish-end-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.publish-button-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notify-container {
+  display: flex;
+  align-items: center;
+  padding: 1.5px;
+  cursor: pointer;
+}

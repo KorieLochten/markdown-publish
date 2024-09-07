@@ -4,7 +4,7 @@ import commonjs from "@rollup/plugin-commonjs";
 import postcss from "rollup-plugin-postcss";
 const isProd = process.env.BUILD === "production";
 import { resolve as pathResolve } from "path";
-
+import builtins from "builtin-modules";
 export default {
   input: "./src/main.ts",
   output: {
@@ -14,7 +14,22 @@ export default {
     format: "cjs",
     exports: "default"
   },
-  external: ["obsidian"],
+  external: [
+    "obsidian",
+    "electron",
+    "@codemirror/autocomplete",
+    "@codemirror/collab",
+    "@codemirror/commands",
+    "@codemirror/language",
+    "@codemirror/lint",
+    "@codemirror/search",
+    "@codemirror/state",
+    "@codemirror/view",
+    "@lezer/common",
+    "@lezer/highlight",
+    "@lezer/lr",
+    ...builtins
+  ],
   plugins: [
     typescript(),
     resolve({

@@ -1,4 +1,4 @@
-import { App } from "obsidian";
+import { App, MarkdownView } from "obsidian";
 import {
   convertLanguageToValid,
   createImage,
@@ -63,10 +63,6 @@ type HeadingToken = {
   level: number;
 };
 
-type BreakToken = {
-  type: "break";
-};
-
 type HorizontalRuleToken = {
   type: "horinzontalRule";
 };
@@ -97,13 +93,23 @@ type FootnoteUrlToken = {
 
 type TableToken = {
   type: "table";
+  start: number;
+  end: number;
   lineStart: number;
   lineEnd: number;
 };
 
+type LineToken = {
+  type: "line";
+  index: number;
+};
+
+type BreakToken = {
+  type: "break";
+};
+
 type Token =
   | ImageToken
-  | BreakToken
   | UrlToken
   | HorizontalRuleToken
   | BoldToken
@@ -115,8 +121,10 @@ type Token =
   | OListToken
   | TextToken
   | CodeBlockToken
+  | BreakToken
   | FootnoteToken
   | FootnoteUrlToken
+  | LineToken
   | TableToken
   | CodeToken
   | HeadingToken;
@@ -253,6 +261,12 @@ export const tokenizer = (
     }
 
     let cursor = 0;
+
+    tokens.push({
+      type: "line",
+      index
+    });
+
     let line = lines[index];
 
     let hasWritten = false;
@@ -539,8 +553,10 @@ export const tokenizer = (
 
               tokens.push({
                 type: "table",
-                lineStart: charCount,
-                lineEnd: barCharCount - 1
+                start: charCount,
+                end: barCharCount - 1,
+                lineStart: index,
+                lineEnd: tableIndex
               });
 
               cursor = line.length + 1;
@@ -594,10 +610,10 @@ export const tokenizer = (
             });
 
             state = "TEXT";
-          } else if (count === 2 && rules.handleBacktick.handleCode) {
+          } else if (rules.handleBacktick.handleCode) {
             let hasEnd = false;
             let backtickCursor = cursor + count - 1;
-            for (let i = cursor; i < line.length; i++) {
+            for (let i = backtickCursor; i < line.length; i++) {
               let char = line[i];
 
               if (char === "`") {
@@ -629,10 +645,9 @@ export const tokenizer = (
               type: "code",
               content: line.slice(
                 backtickCursor,
-                hasEnd ? cursor - count : cursor
+                hasEnd ? cursor - count : cursor - 1
               )
             });
-
             state = "TEXT";
           } else {
             buffer += "`" + char;
@@ -1279,11 +1294,15 @@ export const parser = async (
 ): Promise<HTMLElement> => {
   const container = element || document.createElement("div");
 
+  const currentDocument = document.querySelector(
+    ".workspace-leaf.mod-active .workspace-leaf-content .view-content .markdown-source-view"
+  ) as HTMLElement;
+
+  const markdownView = app.workspace.getActiveViewOfType(MarkdownView);
+
   let elementQueue: HTMLElement[] = [];
 
-  const cmEmbeds: HTMLElement[] = Array.from(
-    document.querySelectorAll(".workspace-leaf.mod-active .cm-embed-block")
-  );
+  const currentValue = markdownView.editor.getValue();
 
   const popElement = (tagName: string): boolean => {
     if (
@@ -1298,6 +1317,9 @@ export const parser = async (
 
   const footnoteMap: Record<string, string> = {};
   const footnotes: Record<string, HTMLElement> = {};
+
+  let currentLine = 0;
+  let currentDocumentLine = 0;
 
   for (const token of tokens) {
     switch (token.type) {
@@ -1389,6 +1411,10 @@ export const parser = async (
         elementQueue.push(item);
         break;
       }
+      case "line":
+        currentLine = token.index;
+
+        break;
       case "break":
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendChild(
@@ -1468,47 +1494,55 @@ export const parser = async (
 
         let found = false;
 
-        if (!isValidLang) {
-          for (const block of cmEmbeds) {
-            const cmViewObject = Object.assign({}, block) as any;
-            const cmView = Object.assign({}, cmViewObject["cmView"]);
-            const widget = cmView["widget"];
+        if (!isValidLang && language.length > 0) {
+          const range = markdownView.editor.getRange(
+            {
+              line: token.lineStart,
+              ch: 0
+            },
+            {
+              line: token.lineEnd + 1,
+              ch: 0
+            }
+          );
 
-            if (
-              widget &&
-              widget.lineStart === token.lineStart &&
-              widget.lineEnd === token.lineEnd
-            ) {
-              const embedContainer = block.firstChild as HTMLElement;
-              if (embedContainer) {
-                const imageSrc = `medium-assets/${language}-widget-${token.lineStart}-${token.lineEnd}.png`;
-                const imageBlock = createImage(imageSrc, "Code Block Widget");
+          markdownView.editor.setValue(range);
+          markdownView.editor.refresh();
+          await new Promise((resolve) => setTimeout(resolve, 100));
 
-                embedContainer.style.backgroundColor =
-                  "var(--background-primary)";
-                embedContainer.style.color = "var(--text-normal)";
+          const cmEmbed = currentDocument.querySelector(
+            ".cm-embed-block"
+          ) as HTMLElement;
 
-                const { width, height } = await saveHtmlAsPng(
-                  app,
-                  embedContainer,
-                  imageSrc
-                );
+          if (cmEmbed) {
+            const imageSrc = `${language}-widget-${token.lineStart}-${token.lineEnd}.png`;
 
-                const image = imageBlock.querySelector(
-                  "img"
-                ) as HTMLImageElement;
-                image.setAttribute("data-width", width.toString());
-                image.setAttribute("data-height", height.toString());
-                imageBlock.style.maxWidth = `${width}px`;
-                imageBlock.style.maxHeight = `${height}px`;
+            cmEmbed.style.backgroundColor = "var(--background-primary)";
+            cmEmbed.style.color = "var(--text-normal)";
 
-                container.appendChild(imageBlock);
+            try {
+              const { width, height } = await saveHtmlAsPng(
+                app,
+                cmEmbed,
+                imageSrc
+              );
 
-                found = true;
-                break;
-              }
+              const imageBlock = createImage(imageSrc, "Code Block Widget");
+              const image = imageBlock.querySelector("img") as HTMLImageElement;
+              image.setAttribute("data-width", width.toString());
+              image.setAttribute("data-height", height.toString());
+              imageBlock.style.maxWidth = `${width}px`;
+              imageBlock.style.maxHeight = `${height}px`;
+
+              container.appendChild(imageBlock);
+
+              found = true;
+            } catch (e) {
+              console.error(e);
             }
           }
+
+          markdownView.editor.setValue(currentValue);
 
           if (found) break;
         }
@@ -1615,43 +1649,95 @@ export const parser = async (
         break;
       }
       case "table": {
-        for (const block of cmEmbeds) {
-          const cmViewObject = Object.assign({}, block) as any;
-          const cmView = Object.assign({}, cmViewObject["cmView"]);
-          const widget = cmView["widget"];
+        const range = markdownView.editor.getRange(
+          {
+            line: token.lineStart,
+            ch: 0
+          },
+          {
+            line: token.lineEnd + 1,
+            ch: 0
+          }
+        );
 
-          if (
-            widget &&
-            widget.start === token.lineStart &&
-            widget.end === token.lineEnd
-          ) {
-            const embedContainer = block.firstChild as HTMLElement;
-            if (embedContainer) {
-              const imageSrc = `medium-assets/obsidian-table-widget-${token.lineStart}-${token.lineEnd}.png`;
-              const imageBlock = createImage(imageSrc, "Code Block Widget");
+        markdownView.editor.setValue(range);
+        markdownView.editor.refresh();
+        await new Promise((resolve) => setTimeout(resolve, 100));
 
-              embedContainer.style.backgroundColor =
-                "var(--background-primary)";
-              embedContainer.style.color = "var(--text-normal)";
+        const cmEmbed = currentDocument.querySelector(
+          ".cm-embed-block"
+        ) as HTMLElement;
 
-              const { width, height } = await saveHtmlAsPng(
-                app,
-                embedContainer,
-                imageSrc
-              );
+        if (cmEmbed) {
+          const imageSrc = `obsidian-table-widget-${token.lineStart}-${token.lineEnd}.png`;
+          const table = cmEmbed.querySelector("table") as HTMLTableElement;
+          table.style.backgroundColor = "var(--background-primary)";
+          try {
+            const { width, height } = await saveHtmlAsPng(
+              app,
+              table,
+              imageSrc,
+              (doc, element) => {
+                if (element instanceof HTMLTableElement) {
+                  element.style.borderCollapse = "collapse";
+                  element.style.width = "100%";
+                  element.style.fontFamily = "Arial, sans-serif";
+                  element.style.wordSpacing = "normal";
+                  element.style.letterSpacing = "normal";
+                  element.style.whiteSpace = "normal";
+                }
+                element.className = "";
+                const thead = element.querySelector("thead");
+                const tbody = element.querySelector("tbody");
 
-              const image = imageBlock.querySelector("img") as HTMLImageElement;
-              image.setAttribute("data-width", width.toString());
-              image.setAttribute("data-height", height.toString());
-              imageBlock.style.maxWidth = `${width}px`;
-              imageBlock.style.maxHeight = `${height}px`;
+                for (const tr of thead.querySelectorAll("tr")) {
+                  for (const th of tr.querySelectorAll("th")) {
+                    th.className = "";
 
-              container.appendChild(imageBlock);
+                    for (const child of Array.from(th.children)) {
+                      if (child.className.contains("drag-handle")) {
+                        th.removeChild(child);
+                      } else {
+                        th.style.textAlign = "left";
+                        th.style.fontWeight = "bold";
+                      }
+                    }
+                  }
+                }
 
-              break;
-            }
+                for (const tr of tbody.querySelectorAll("tr")) {
+                  for (const td of tr.querySelectorAll("td")) {
+                    td.className = "";
+
+                    for (const child of Array.from(td.children)) {
+                      if (child.className.contains("drag-handle")) {
+                        td.removeChild(child);
+                      } else {
+                        td.style.textAlign = "left";
+                      }
+                    }
+                  }
+                }
+
+                console.log(element);
+              }
+            );
+
+            const imageBlock = createImage(imageSrc, "Code Block Widget");
+
+            const image = imageBlock.querySelector("img") as HTMLImageElement;
+            image.setAttribute("data-width", width.toString());
+            image.setAttribute("data-height", height.toString());
+            imageBlock.style.maxWidth = `${width}px`;
+            imageBlock.style.maxHeight = `${height}px`;
+
+            container.appendChild(imageBlock);
+          } catch (e) {
+            console.error(e);
           }
         }
+
+        markdownView.editor.setValue(currentValue);
       }
     }
   }

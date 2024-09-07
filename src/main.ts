@@ -1,6 +1,7 @@
 import {
   addIcon,
   App,
+  editorLivePreviewField,
   MarkdownView,
   Notice,
   Plugin,

@@ -56,6 +56,7 @@ export class MediumPublishAPI {
   ): Promise<PublishResponse | null> {
     let fileName = this.plugin.app.vault.getFileByPath(path).basename;
     let fileContent = await this.plugin.app.vault.adapter.read(path);
+
     const html =
       body.contentFormat === "markdown"
         ? await parser(tokenizer(fileContent), this.plugin.app)
@@ -188,7 +189,7 @@ export class MediumPublishAPI {
   }
 }
 
-function concatenateArrayBuffers(buffers: ArrayBuffer[]): ArrayBuffer {
+const concatenateArrayBuffers = (buffers: ArrayBuffer[]): ArrayBuffer => {
   const totalLength = buffers.reduce(
     (sum, current) => sum + current.byteLength,
     0
@@ -202,4 +203,4 @@ function concatenateArrayBuffers(buffers: ArrayBuffer[]): ArrayBuffer {
   });
 
   return result.buffer;
-}
+};

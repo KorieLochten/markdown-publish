@@ -1,5 +1,5 @@
 import html2canvas from "html2canvas";
-import { App } from "obsidian";
+import { App, MarkdownView } from "obsidian";
 
 export const parseResponse = <T>(response: string): T => {
   return JSON.parse(response);
@@ -104,37 +104,34 @@ export const saveHtmlAsPng = async (
   app: App,
   element: HTMLElement,
   fileName: string,
+  onclone?: (doc: Document, element: Element) => void,
   scaleFactor: number = 2
 ): Promise<{ width: number; height: number } | null> => {
   try {
     const canvas = await html2canvas(element, {
-      allowTaint: true,
+      scale: scaleFactor,
       logging: false,
-      scale: scaleFactor
+      onclone
     });
 
     const { width, height } = canvas;
 
-    const scaledCanvas = document.createElement("canvas");
-    scaledCanvas.width = width * scaleFactor;
-    scaledCanvas.height = height * scaleFactor;
-
-    const ctx = scaledCanvas.getContext("2d");
-    if (ctx) {
-      ctx.scale(scaleFactor, scaleFactor);
-      ctx.drawImage(canvas, 0, 0);
-    }
-
-    const dataUrl = scaledCanvas.toDataURL("image/png", 1.0);
+    const dataUrl = canvas.toDataURL("image/png", 1.0);
     const base64Data = dataUrl.split(",")[1];
     const arrayBuffer = Uint8Array.from(
       Buffer.from(base64Data, "base64")
     ).buffer;
 
-    if (await app.vault.adapter.exists(fileName)) {
-      await app.vault.adapter.writeBinary(fileName, arrayBuffer);
+    if (app.vault.getFolderByPath("medium-assets") === null) {
+      await app.vault.createFolder("medium-assets");
+    }
+
+    const file = app.vault.getFileByPath("medium-assets/" + fileName);
+
+    if (file) {
+      await app.vault.modifyBinary(file, arrayBuffer);
     } else {
-      await app.vault.createBinary(fileName, arrayBuffer);
+      await app.vault.createBinary("medium-assets/" + fileName, arrayBuffer);
     }
 
     return { width, height };
@@ -147,7 +144,7 @@ export const saveHtmlAsPng = async (
 export const createImage = (src: string, alt: string): HTMLElement => {
   const div = document.createElement("div");
   div.className = "aspectRatioPlaceholder is-locked";
-  const img = document.createElement("img");
+  const img = new Image();
   const caption = document.createElement("figcaption");
   caption.className = "imageCaption";
   img.src = src;

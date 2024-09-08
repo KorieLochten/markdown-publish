@@ -66,7 +66,9 @@ export class MediumPublishAPI {
           )
         : createDiv(fileContent);
 
-    html.insertAfter(createHeader(fileName), html.firstChild);
+    if (html.firstChild instanceof HTMLElement) {
+      html.insertAfter(createHeader(fileName), html.firstChild);
+    }
 
     const request: RequestParams = {
       url: `${url}/users/${this.plugin.settings.id}/posts`,

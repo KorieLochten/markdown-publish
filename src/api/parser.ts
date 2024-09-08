@@ -12,7 +12,7 @@ type ImageToken = {
   type: "image";
   url: string;
   alt: string;
-  caption: Token[] | null;
+  caption: string;
   dimensions?: {
     width: number;
     height: number | null;
@@ -47,11 +47,13 @@ type PullQuoteToken = {
 
 type UListToken = {
   type: "unorderedList";
+  content: string;
 };
 
 type OListToken = {
   type: "orderedList";
   level: number;
+  content: string;
 };
 
 type TextToken = {
@@ -165,6 +167,7 @@ type TokenizerRules = {
   handleCode?: boolean;
   handleHeading?: boolean;
   handleVerticalBar?: boolean;
+  handleBreaks?: boolean;
 };
 
 export const DEFAULT_TOKENIZER_RULES: TokenizerRules = {
@@ -190,7 +193,8 @@ export const DEFAULT_TOKENIZER_RULES: TokenizerRules = {
   handleList: true,
   handleHeading: true,
   handleCode: true,
-  handleVerticalBar: true
+  handleVerticalBar: true,
+  handleBreaks: true
 };
 
 export const tokenizer = (
@@ -331,11 +335,8 @@ export const tokenizer = (
                 flushBuffer();
                 tokens.push({
                   type: "orderedList",
-                  level: Number.parseInt(char)
-                });
-                openTokens.push({
-                  type: "orderedList",
-                  level: Number.parseInt(char)
+                  level: Number.parseInt(char),
+                  content: line.slice(cursor + 3)
                 });
 
                 cursor += 2;
@@ -371,12 +372,12 @@ export const tokenizer = (
               break;
             case "+":
               if (nextChar === " " && !hasWritten && rules.handleList) {
+                flushBuffer();
                 tokens.push({
-                  type: "unorderedList"
+                  type: "unorderedList",
+                  content: line.slice(cursor + 1)
                 });
-                openTokens.push({
-                  type: "unorderedList"
-                });
+                cursor = line.length + 1;
               } else {
                 buffer += char;
               }
@@ -424,7 +425,8 @@ export const tokenizer = (
               state = "BRACKET";
               break;
             case "-":
-              if (!hasWritten) {
+              if (!hasWritten && rules.handleHyphens) {
+                flushBuffer();
                 state = "HYPHENS";
               } else {
                 buffer += char;
@@ -619,7 +621,7 @@ export const tokenizer = (
 
                 if (backCount == count) {
                   hasEnd = true;
-                  cursor = i + 1;
+                  cursor = i;
                   break;
                 } else {
                   i += backCount - 1;
@@ -635,7 +637,7 @@ export const tokenizer = (
               type: "code",
               content: line.slice(
                 backtickCursor,
-                hasEnd ? cursor - count : cursor - 1
+                hasEnd ? cursor - (count - 1) : cursor - 1
               )
             });
             state = "TEXT";
@@ -669,8 +671,10 @@ export const tokenizer = (
                   cursor += 3;
                 } else if (rules.handleList) {
                   tokens.push({
-                    type: "unorderedList"
+                    type: "unorderedList",
+                    content: line.slice(cursor + 1)
                   });
+                  cursor = line.length + 1;
                 } else {
                   buffer += "-";
                   hasWritten = true;
@@ -708,7 +712,7 @@ export const tokenizer = (
             let footnoteCursor = cursor + 1;
             let hasEnd = false;
 
-            for (let i = cursor + 1; i < line.length; i++) {
+            for (let i = footnoteCursor; i < line.length; i++) {
               if (line[i] === "]") {
                 hasEnd = true;
                 footnoteCursor = i;
@@ -750,7 +754,7 @@ export const tokenizer = (
                   type: "footnoteUrl",
                   id: footnoteUrl
                 });
-                cursor = footnoteCursor + 1;
+                cursor = footnoteCursor;
               }
             } else {
               buffer += "[^";
@@ -968,7 +972,7 @@ export const tokenizer = (
 
           if (currentToken) {
             if (currentToken.type === "image") {
-              currentToken.caption = tokenizer(caption);
+              currentToken.caption = caption;
 
               tokens.push(currentToken);
               currentToken = null;
@@ -1050,10 +1054,11 @@ export const tokenizer = (
               state === "ASTERISK" &&
               rules.handleAsterisk.handleBulletList
             ) {
-              hasWritten = true;
-              pushAndAdd({
-                type: "unorderedList"
+              tokens.push({
+                type: "unorderedList",
+                content: line.slice(cursor + 1)
               });
+              cursor = line.length + 1;
               break;
             }
           }
@@ -1257,9 +1262,11 @@ export const tokenizer = (
 
     openTokens = [];
 
-    tokens.push({
-      type: "break"
-    });
+    if (rules.handleBreaks) {
+      tokens.push({
+        type: "break"
+      });
+    }
 
     index += 1;
   }
@@ -1278,13 +1285,6 @@ const superscriptMap: { [key: string]: string } = {
   "7": "\u2077",
   "8": "\u2078",
   "9": "\u2079"
-};
-
-type ScrollInfo = {
-  top: number;
-  left: number;
-  clientHeight: number;
-  clientWidth: number;
 };
 
 export const parser = async (
@@ -1380,37 +1380,21 @@ export const parser = async (
         elementQueue.push(italic);
         break;
       }
-      case "unorderedList": {
-        const item = document.createElement("li");
-        let found = popElement("LI");
-        const list = document.createElement("ul");
-        list.appendChild(item);
-
-        if (found) break;
-        if (elementQueue.length > 0) {
-          elementQueue[elementQueue.length - 1].appendChild(list);
-        } else {
-          container.appendChild(list);
-        }
-        elementQueue.push(item);
-        break;
-      }
+      case "unorderedList":
       case "orderedList": {
-        let found = popElement("LI");
-        if (found) break;
-
         const item = document.createElement("li");
-        item.setAttribute("value", token.level.toString());
-        const list = document.createElement("ol");
-
+        const list = document.createElement(
+          token.type === "unorderedList" ? "ul" : "ol"
+        );
         list.appendChild(item);
+
+        parser(tokenizer(token.content), app, appSettings, item);
 
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendChild(list);
         } else {
           container.appendChild(list);
         }
-        elementQueue.push(item);
         break;
       }
       case "break":
@@ -1449,7 +1433,24 @@ export const parser = async (
         if (token.caption) {
           const caption = imageBlock.querySelector("figcaption") as HTMLElement;
 
-          await parser(token.caption, app, appSettings, caption);
+          await parser(
+            tokenizer(token.caption, {
+              handleAsterisk: {
+                handleBold: true,
+                handleBulletList: false,
+                handleHorizontalRule: false,
+                handleItalic: true
+              },
+              handleUnderscore: {
+                handleBold: true,
+                handleHorizontalRule: false,
+                handleItalic: true
+              }
+            }),
+            app,
+            appSettings,
+            caption
+          );
         }
 
         if (elementQueue.length > 0) {
@@ -1489,8 +1490,6 @@ export const parser = async (
         const code = document.createElement("span");
         let language = convertLanguageToValid(token.language);
         let isValidLang = isValidLanguage(language);
-
-        console.log(token);
 
         if (
           (!isValidLang || appSettings.convertCodeToPng) &&
@@ -1598,8 +1597,7 @@ export const parser = async (
                   handleHorizontalRule: false,
                   handleItalic: true
                 },
-                handleList: false,
-                handleCode: false
+                handleBreaks: true
               }),
               app,
               appSettings,
@@ -1609,7 +1607,6 @@ export const parser = async (
 
           codeBlock.appendChild(code);
           container.appendChild(codeBlock);
-          console.log(codeBlock);
         }
         break;
       }
@@ -1617,7 +1614,24 @@ export const parser = async (
       case "code": {
         const code = document.createElement("code");
         code.setAttribute("data-testid", "editorParagraphText");
-        code.textContent = token.content;
+        parser(
+          tokenizer(token.content, {
+            handleAsterisk: {
+              handleBold: true,
+              handleBulletList: false,
+              handleHorizontalRule: false,
+              handleItalic: true
+            },
+            handleUnderscore: {
+              handleBold: true,
+              handleHorizontalRule: false,
+              handleItalic: true
+            }
+          }),
+          app,
+          appSettings,
+          code
+        );
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendChild(code);
         } else {

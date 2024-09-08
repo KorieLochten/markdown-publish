@@ -667,13 +667,16 @@ export const tokenizer = (
                     type: "horinzontalRule"
                   });
                   cursor += 3;
-                  state = "TEXT";
-                } else {
+                } else if (rules.handleList) {
                   tokens.push({
                     type: "unorderedList"
                   });
-                  state = "TEXT";
+                } else {
+                  buffer += "-";
+                  hasWritten = true;
+                  cursor -= 1;
                 }
+                state = "TEXT";
               }
               break;
             default: {
@@ -1487,7 +1490,7 @@ export const parser = async (
         let language = convertLanguageToValid(token.language);
         let isValidLang = isValidLanguage(language);
 
-        let found = false;
+        console.log(token);
 
         if (
           (!isValidLang || appSettings.convertCodeToPng) &&
@@ -1517,8 +1520,6 @@ export const parser = async (
 
           if (cmEmbed || hyperMDCodeBlocks) {
             const imageSrc = `${language}-widget-${token.lineStart}-${token.lineEnd}.png`;
-            const gaps = currentDocument.querySelectorAll(".cm-gap");
-            let count = gaps.length;
 
             try {
               const { width, height } = await saveHtmlAsPng(
@@ -1562,59 +1563,57 @@ export const parser = async (
               imageBlock.style.maxHeight = `${height}px`;
 
               container.appendChild(imageBlock);
-
-              found = true;
             } catch (e) {
               console.error(e);
             }
           }
 
           markdownView.editor.setValue(currentValue);
-
-          if (found) break;
-        }
-        codeBlock.setAttribute(
-          "data-code-block-mode",
-          isValidLang ? "2" : language.length > 0 ? "1" : "0"
-        );
-        codeBlock.setAttribute("data-testid", "editorCodeBlockParagraph");
-        codeBlock.setAttribute("data-code-block-lang", language);
-        code.setAttribute("data-testid", "editorParagraphText");
-
-        if (language.length > 0) {
-          code.className = token.language;
-          code.textContent =
-            language === "html" || language === "xml"
-              ? htmlEntities(token.content)
-              : token.content;
         } else {
-          await parser(
-            tokenizer(token.content, {
-              handleAsterisk: {
-                handleBold: true,
-                handleBulletList: false,
-                handleHorizontalRule: false,
-                handleItalic: true
-              },
-              handleUnderscore: {
-                handleBold: true,
-                handleHorizontalRule: false,
-                handleItalic: true
-              },
-              handleList: false,
-              handleCode: false
-            }),
-            app,
-            appSettings,
-            code
+          codeBlock.setAttribute(
+            "data-code-block-mode",
+            isValidLang ? "2" : language.length > 0 ? "1" : "0"
           );
+          codeBlock.setAttribute("data-testid", "editorCodeBlockParagraph");
+          codeBlock.setAttribute("data-code-block-lang", language);
+          code.setAttribute("data-testid", "editorParagraphText");
+
+          if (language.length > 0) {
+            code.className = token.language;
+            code.textContent =
+              language === "html" || language === "xml"
+                ? htmlEntities(token.content)
+                : token.content;
+          } else {
+            await parser(
+              tokenizer(token.content, {
+                handleAsterisk: {
+                  handleBold: true,
+                  handleBulletList: false,
+                  handleHorizontalRule: false,
+                  handleItalic: true
+                },
+                handleUnderscore: {
+                  handleBold: true,
+                  handleHorizontalRule: false,
+                  handleItalic: true
+                },
+                handleList: false,
+                handleCode: false
+              }),
+              app,
+              appSettings,
+              code
+            );
+          }
+
+          codeBlock.appendChild(code);
+          container.appendChild(codeBlock);
+          console.log(codeBlock);
         }
-
-        codeBlock.appendChild(code);
-        container.appendChild(codeBlock);
-
         break;
       }
+
       case "code": {
         const code = document.createElement("code");
         code.setAttribute("data-testid", "editorParagraphText");

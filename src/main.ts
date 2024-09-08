@@ -8,7 +8,11 @@ import {
   PluginManifest
 } from "obsidian";
 import { createServices, type Services } from "./services";
-import { DEFAULT_SETTINGS, Settings } from "./settings";
+import {
+  DEFAULT_SETTINGS,
+  MediumPublishSettingTab,
+  Settings
+} from "./settings";
 import { createReactModal } from "./ui/modal";
 import { getMediumIcon } from "./utils";
 
@@ -19,6 +23,7 @@ export default class MediumPublishPlugin extends Plugin {
     super(app, pluginManifest);
 
     this.services = createServices(this);
+    this.addSettingTab(new MediumPublishSettingTab(this));
   }
 
   async onload() {

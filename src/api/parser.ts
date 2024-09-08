@@ -1,4 +1,4 @@
-import { App, MarkdownView } from "obsidian";
+import { App, EditorScrollInfo, MarkdownView } from "obsidian";
 import {
   convertLanguageToValid,
   createImage,
@@ -6,6 +6,7 @@ import {
   isValidLanguage,
   saveHtmlAsPng
 } from "./utils";
+import { Settings } from "src/settings";
 
 type ImageToken = {
   type: "image";
@@ -99,11 +100,6 @@ type TableToken = {
   lineEnd: number;
 };
 
-type LineToken = {
-  type: "line";
-  index: number;
-};
-
 type BreakToken = {
   type: "break";
 };
@@ -124,7 +120,6 @@ type Token =
   | BreakToken
   | FootnoteToken
   | FootnoteUrlToken
-  | LineToken
   | TableToken
   | CodeToken
   | HeadingToken;
@@ -261,11 +256,6 @@ export const tokenizer = (
     }
 
     let cursor = 0;
-
-    tokens.push({
-      type: "line",
-      index
-    });
 
     let line = lines[index];
 
@@ -1287,15 +1277,27 @@ const superscriptMap: { [key: string]: string } = {
   "9": "\u2079"
 };
 
+type ScrollInfo = {
+  top: number;
+  left: number;
+  clientHeight: number;
+  clientWidth: number;
+};
+
 export const parser = async (
   tokens: Token[],
   app: App,
+  appSettings: Settings,
   element?: HTMLElement
 ): Promise<HTMLElement> => {
   const container = element || document.createElement("div");
 
   const currentDocument = document.querySelector(
-    ".workspace-leaf.mod-active .workspace-leaf-content .view-content .markdown-source-view"
+    ".workspace-leaf.mod-active .workspace-leaf-content .view-content .markdown-source-view .cm-content"
+  ) as HTMLElement;
+
+  const currentScroller = document.querySelector(
+    ".workspace-leaf.mod-active .workspace-leaf-content .view-content .markdown-source-view .cm-sizer"
   ) as HTMLElement;
 
   const markdownView = app.workspace.getActiveViewOfType(MarkdownView);
@@ -1317,9 +1319,6 @@ export const parser = async (
 
   const footnoteMap: Record<string, string> = {};
   const footnotes: Record<string, HTMLElement> = {};
-
-  let currentLine = 0;
-  let currentDocumentLine = 0;
 
   for (const token of tokens) {
     switch (token.type) {
@@ -1411,10 +1410,6 @@ export const parser = async (
         elementQueue.push(item);
         break;
       }
-      case "line":
-        currentLine = token.index;
-
-        break;
       case "break":
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendChild(
@@ -1451,7 +1446,7 @@ export const parser = async (
         if (token.caption) {
           const caption = imageBlock.querySelector("figcaption") as HTMLElement;
 
-          await parser(token.caption, app, caption);
+          await parser(token.caption, app, appSettings, caption);
         }
 
         if (elementQueue.length > 0) {
@@ -1494,7 +1489,10 @@ export const parser = async (
 
         let found = false;
 
-        if (!isValidLang && language.length > 0) {
+        if (
+          (!isValidLang || appSettings.convertCodeToPng) &&
+          language.length > 0
+        ) {
           const range = markdownView.editor.getRange(
             {
               line: token.lineStart,
@@ -1514,17 +1512,46 @@ export const parser = async (
             ".cm-embed-block"
           ) as HTMLElement;
 
-          if (cmEmbed) {
-            const imageSrc = `${language}-widget-${token.lineStart}-${token.lineEnd}.png`;
+          const hyperMDCodeBlocks =
+            currentDocument.querySelectorAll(".HyperMD-codeblock");
 
-            cmEmbed.style.backgroundColor = "var(--background-primary)";
-            cmEmbed.style.color = "var(--text-normal)";
+          if (cmEmbed || hyperMDCodeBlocks) {
+            const imageSrc = `${language}-widget-${token.lineStart}-${token.lineEnd}.png`;
+            const gaps = currentDocument.querySelectorAll(".cm-gap");
+            let count = gaps.length;
 
             try {
               const { width, height } = await saveHtmlAsPng(
+                appSettings.assetDirectory,
                 app,
-                cmEmbed,
-                imageSrc
+                cmEmbed ? cmEmbed : currentDocument,
+                imageSrc,
+                async (_, element) => {
+                  if (element instanceof HTMLElement) {
+                    element.style.backgroundColor = "var(--background-primary)";
+                    element.style.color = "var(--text-normal)";
+                    element.style.fontFamily = "Arial, sans-serif";
+
+                    const hmds = element.querySelectorAll(".cm-hmd-codeblock");
+                    const flair = element.querySelector(".code-block-flair");
+                    for (const hmd of hmds) {
+                      if (hmd instanceof HTMLElement) {
+                        hmd.style.fontFamily = "Roboto Mono, monospace";
+                        hmd.style.fontWeight = "600";
+                      }
+                    }
+
+                    if (flair instanceof HTMLElement) {
+                      flair.className = "";
+                      flair.style.fontFamily = "Arial, sans-serif";
+                      flair.style.position = "absolute";
+                      flair.style.top = "0";
+                      flair.style.right = "0";
+                      flair.style.padding = "0.5em";
+                      flair.style.zIndex = "1";
+                    }
+                  }
+                }
               );
 
               const imageBlock = createImage(imageSrc, "Code Block Widget");
@@ -1578,6 +1605,7 @@ export const parser = async (
               handleCode: false
             }),
             app,
+            appSettings,
             code
           );
         }
@@ -1640,7 +1668,7 @@ export const parser = async (
 
         const footnoteId = document.createElement("bold");
         footnoteId.textContent = `${display}. `;
-        await parser(tokenizer(token.text), app, footnote);
+        await parser(tokenizer(token.text), app, appSettings, footnote);
         footnote.prepend(footnoteId);
         footnote.id = token.id;
         footnote.setAttribute("name", token.id);
@@ -1674,18 +1702,15 @@ export const parser = async (
           table.style.backgroundColor = "var(--background-primary)";
           try {
             const { width, height } = await saveHtmlAsPng(
+              appSettings.assetDirectory,
               app,
               table,
               imageSrc,
-              (doc, element) => {
-                if (element instanceof HTMLTableElement) {
-                  element.style.borderCollapse = "collapse";
-                  element.style.width = "100%";
+              (_, element) => {
+                if (element instanceof HTMLElement) {
                   element.style.fontFamily = "Arial, sans-serif";
-                  element.style.wordSpacing = "normal";
-                  element.style.letterSpacing = "normal";
-                  element.style.whiteSpace = "normal";
                 }
+
                 element.className = "";
                 const thead = element.querySelector("thead");
                 const tbody = element.querySelector("tbody");
@@ -1718,8 +1743,6 @@ export const parser = async (
                     }
                   }
                 }
-
-                console.log(element);
               }
             );
 

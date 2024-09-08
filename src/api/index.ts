@@ -59,7 +59,11 @@ export class MediumPublishAPI {
 
     const html =
       body.contentFormat === "markdown"
-        ? await parser(tokenizer(fileContent), this.plugin.app)
+        ? await parser(
+            tokenizer(fileContent),
+            this.plugin.app,
+            this.plugin.settings
+          )
         : createDiv(fileContent);
 
     html.insertAfter(createHeader(fileName), html.firstChild);

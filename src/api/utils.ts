@@ -1,5 +1,5 @@
 import html2canvas from "html2canvas";
-import { App, MarkdownView } from "obsidian";
+import { App } from "obsidian";
 
 export const parseResponse = <T>(response: string): T => {
   return JSON.parse(response);
@@ -101,6 +101,7 @@ export const createLinkElement = (href: string, text: string) => {
 };
 
 export const saveHtmlAsPng = async (
+  directory: string,
   app: App,
   element: HTMLElement,
   fileName: string,
@@ -122,16 +123,18 @@ export const saveHtmlAsPng = async (
       Buffer.from(base64Data, "base64")
     ).buffer;
 
-    if (app.vault.getFolderByPath("medium-assets") === null) {
-      await app.vault.createFolder("medium-assets");
+    if (app.vault.getFolderByPath(directory) === null) {
+      await app.vault.createFolder(directory);
     }
 
-    const file = app.vault.getFileByPath("medium-assets/" + fileName);
+    const filePath = directory + "/" + fileName;
+
+    const file = app.vault.getFileByPath(filePath);
 
     if (file) {
       await app.vault.modifyBinary(file, arrayBuffer);
     } else {
-      await app.vault.createBinary("medium-assets/" + fileName, arrayBuffer);
+      await app.vault.createBinary(filePath, arrayBuffer);
     }
 
     return { width, height };

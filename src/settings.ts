@@ -60,9 +60,9 @@ export class MediumPublishSettingTab extends PluginSettingTab {
     this.createItemControl(setting.controlEl);
 
     new Setting(containerEl)
-      .setName("Convert Code to PNG")
+      .setName("Code Snippets as PNG")
       .setDesc(
-        "Instead of using Medium's code block, convert code to PNG then upload"
+        "Instead of using Medium's code block, convert code snippets to PNG images"
       )
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.settings.convertCodeToPng);

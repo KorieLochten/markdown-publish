@@ -1,5 +1,6 @@
 import html2canvas from "html2canvas";
 import { App } from "obsidian";
+import { CSSProperties } from "react";
 
 export const parseResponse = <T>(response: string): T => {
   return JSON.parse(response);
@@ -106,11 +107,12 @@ export const saveHtmlAsPng = async (
   element: HTMLElement,
   fileName: string,
   onclone?: (doc: Document, element: Element) => void,
-  scaleFactor: number = 2
+  scaleFactor: number = 4
 ): Promise<{ width: number; height: number } | null> => {
   try {
     const canvas = await html2canvas(element, {
       scale: scaleFactor,
+      allowTaint: true,
       logging: false,
       onclone
     });
@@ -185,4 +187,19 @@ export const htmlEntities = (text: string): string => {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+};
+
+export const ensureEveryElementHasStyle = (
+  element: HTMLElement,
+  style: CSSProperties
+) => {
+  for (const child of element.children) {
+    if (child instanceof HTMLElement) {
+      Object.assign(child.style, style);
+      ensureEveryElementHasStyle(child, style);
+      if (child.tagName === "STRONG") {
+        child.style.fontWeight = "bold";
+      }
+    }
+  }
 };

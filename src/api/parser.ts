@@ -2,6 +2,7 @@ import { App, EditorScrollInfo, MarkdownView } from "obsidian";
 import {
   convertLanguageToValid,
   createImage,
+  ensureEveryElementHasStyle,
   htmlEntities,
   isValidLanguage,
   saveHtmlAsPng
@@ -39,10 +40,12 @@ type StrikeThroughToken = {
 
 type BlockQuoteToken = {
   type: "blockquote";
+  content: string;
 };
 
 type PullQuoteToken = {
   type: "pullquote";
+  content: string;
 };
 
 type UListToken = {
@@ -56,6 +59,13 @@ type OListToken = {
   content: string;
 };
 
+type CalloutToken = {
+  type: "callout";
+  callout: string;
+  lineStart: number;
+  lineEnd: number;
+};
+
 type TextToken = {
   type: "text";
   text: string;
@@ -64,6 +74,7 @@ type TextToken = {
 type HeadingToken = {
   type: "heading";
   level: number;
+  content: string;
 };
 
 type HorizontalRuleToken = {
@@ -106,6 +117,10 @@ type BreakToken = {
   type: "break";
 };
 
+type SpanToken = {
+  type: "span";
+};
+
 type Token =
   | ImageToken
   | UrlToken
@@ -120,9 +135,11 @@ type Token =
   | TextToken
   | CodeBlockToken
   | BreakToken
+  | CalloutToken
   | FootnoteToken
   | FootnoteUrlToken
   | TableToken
+  | SpanToken
   | CodeToken
   | HeadingToken;
 
@@ -168,6 +185,8 @@ type TokenizerRules = {
   handleHeading?: boolean;
   handleVerticalBar?: boolean;
   handleBreaks?: boolean;
+  useNewLine?: boolean;
+  wrapSpan?: boolean;
 };
 
 export const DEFAULT_TOKENIZER_RULES: TokenizerRules = {
@@ -202,12 +221,12 @@ export const tokenizer = (
   rules: TokenizerRules = DEFAULT_TOKENIZER_RULES
 ): Token[] => {
   const tokens: Token[] = [];
+
   let lines = markdown.split("\n");
 
   let state: TokenizerState = "TEXT";
   let buffer = "";
   let isImage = false;
-  let currentLevel = 0;
   let index = 0;
   let currentToken: Token | null = null;
 
@@ -264,6 +283,12 @@ export const tokenizer = (
     let line = lines[index];
 
     let hasWritten = false;
+
+    if (rules.wrapSpan) {
+      tokens.push({
+        type: "span"
+      });
+    }
 
     while (cursor < line.length + 1) {
       let char = cursor > line.length ? null : line[cursor];
@@ -346,9 +371,7 @@ export const tokenizer = (
               break;
             case "#":
               if (cursor === 0 && rules.handleHeading) {
-                flushBuffer();
                 state = "HEADING";
-                currentLevel = 1;
               } else {
                 buffer += char ?? "";
               }
@@ -384,9 +407,10 @@ export const tokenizer = (
               hasWritten = true;
               break;
             case "\\":
-              // escape character
-              buffer += nextChar;
-              cursor++;
+              if (nextChar) {
+                buffer += nextChar;
+                cursor++;
+              }
               hasWritten = true;
               break;
             case "!":
@@ -398,22 +422,7 @@ export const tokenizer = (
               break;
             case ">":
               if (!hasWritten) {
-                if (nextChar === ">") {
-                  cursor++;
-                  tokens.push({
-                    type: "pullquote"
-                  });
-                  openTokens.push({
-                    type: "pullquote"
-                  });
-                } else {
-                  tokens.push({
-                    type: "blockquote"
-                  });
-                  openTokens.push({
-                    type: "blockquote"
-                  });
-                }
+                state = "QUOTE";
               } else {
                 buffer += char;
               }
@@ -445,9 +454,114 @@ export const tokenizer = (
                 if (char !== " " && char !== "\t") hasWritten = true;
                 buffer += char;
               } else {
+                if (rules.useNewLine && index < lines.length - 1) {
+                  buffer += "\n";
+                }
                 flushBuffer();
               }
               break;
+          }
+          break;
+        case "QUOTE":
+          if (char === ">") {
+            let quoteIndex = index;
+            let content = line.slice(cursor + 1);
+            for (let i = index + 1; i < lines.length; i++) {
+              let hasEnd = false;
+              for (let j = 0; j < lines[i].length; j++) {
+                if (
+                  lines[i][j] !== ">" &&
+                  lines[i][j] !== " " &&
+                  lines[i][j] !== "\t"
+                ) {
+                  break;
+                } else if (lines[i][j] === ">" && lines[i][j + 1] !== ">") {
+                  content += "\n" + lines[i].slice(j + 1);
+                  hasEnd = true;
+                  break;
+                }
+              }
+
+              if (!hasEnd) {
+                break;
+              }
+            }
+
+            tokens.push({
+              type: "pullquote",
+              content
+            });
+
+            cursor = line.length + 1;
+            index = quoteIndex;
+            state = "TEXT";
+          } else {
+            let quoteIndex = index;
+            let callout: string = "";
+            let content = line.slice(cursor + 1);
+
+            for (let i = cursor; i < line.length; i++) {
+              if (line[i] !== " " && line[i] !== "\t" && line[i] !== "[") {
+                break;
+              } else if (line[i] === "[" && line[i + 1] === "!") {
+                let hasEnd = false;
+                let calloutEnd = i;
+                for (let j = i + 1; j < line.length; j++) {
+                  if (line[j] === "]") {
+                    hasEnd = true;
+                    calloutEnd = j;
+                    break;
+                  }
+                }
+
+                if (hasEnd) {
+                  callout = line.slice(i + 1, calloutEnd);
+                  break;
+                }
+
+                i = hasEnd ? calloutEnd : line.length;
+              }
+            }
+
+            for (let i = quoteIndex + 1; i < lines.length; i++) {
+              let isQuote = false;
+              for (let j = 0; j < lines[i].length; j++) {
+                if (lines[i][j] !== " " && lines[i][j] !== "\t") {
+                  if (lines[i][j] === ">") {
+                    quoteIndex = i;
+                    isQuote = true;
+                    content += "\n" + lines[i].slice(j + 1);
+                  }
+                  break;
+                }
+              }
+
+              if (!isQuote) {
+                break;
+              }
+            }
+
+            if (callout.length > 0) {
+              tokens.push({
+                type: "callout",
+                lineStart: index,
+                lineEnd: quoteIndex,
+                callout: callout.slice(1)
+              });
+
+              index = quoteIndex;
+              cursor = line.length + 1;
+            } else {
+              tokens.push({
+                type: "blockquote",
+                content
+              });
+
+              index = quoteIndex;
+              cursor = line.length + 1;
+            }
+
+            state = "TEXT";
           }
           break;
         case "VERTICAL_BAR":
@@ -929,7 +1043,7 @@ export const tokenizer = (
         }
         case "DOUBLE_QUOTE_CAPTION":
         case "SINGLE_QUOTE_CAPTION":
-        case "BACKTICK_CAPTION":
+        case "BACKTICK_CAPTION": {
           let target;
           switch (state) {
             case "DOUBLE_QUOTE_CAPTION":
@@ -982,29 +1096,32 @@ export const tokenizer = (
           state = "TEXT";
           cursor = captionEndCursor;
           break;
-        case "HEADING":
-          if (cursor > line.length || char === "#") {
-            if (currentLevel < 6) {
-              currentLevel++;
+        }
+        case "HEADING": {
+          let count = 1;
+          for (let i = cursor; i < line.length; i++) {
+            if (line[i] === "#") {
+              count++;
             } else {
-              buffer += "#".repeat(currentLevel);
-              state = "TEXT";
-              cursor--;
+              break;
             }
-          } else if (char !== " ") {
-            buffer += "#".repeat(currentLevel);
-            state = "TEXT";
-            cursor--;
-          } else {
-            let headingToken: HeadingToken = {
+          }
+
+          if (count < 7 && line[cursor + count - 1] === " ") {
+            tokens.push({
               type: "heading",
-              level: currentLevel
-            };
-            tokens.push(headingToken);
-            openTokens.push(headingToken);
+              level: count,
+              content: line.slice(cursor + 1)
+            });
+            cursor = line.length + 1;
+            state = "TEXT";
+          } else {
+            cursor--;
+            buffer += "#";
             state = "TEXT";
           }
           break;
+        }
         case "ASTERISK":
         case "UNDER_SCORE": {
           let target: string = state === "ASTERISK" ? "*" : "_";
@@ -1262,7 +1379,13 @@ export const tokenizer = (
 
     openTokens = [];
 
-    if (rules.handleBreaks) {
+    if (rules.wrapSpan) {
+      tokens.push({
+        type: "span"
+      });
+    }
+
+    if (rules.handleBreaks && index < lines.length - 1) {
       tokens.push({
         type: "break"
       });
@@ -1293,14 +1416,11 @@ export const parser = async (
   appSettings: Settings,
   element?: HTMLElement
 ): Promise<HTMLElement> => {
+  console.log(tokens);
   const container = element || document.createElement("div");
 
   const currentDocument = document.querySelector(
     ".workspace-leaf.mod-active .workspace-leaf-content .view-content .markdown-source-view .cm-content"
-  ) as HTMLElement;
-
-  const currentScroller = document.querySelector(
-    ".workspace-leaf.mod-active .workspace-leaf-content .view-content .markdown-source-view .cm-sizer"
   ) as HTMLElement;
 
   const markdownView = app.workspace.getActiveViewOfType(MarkdownView);
@@ -1325,25 +1445,49 @@ export const parser = async (
 
   for (const token of tokens) {
     switch (token.type) {
-      case "text":
-        const text = document.createTextNode(token.text);
+      case "span":
+        const span = document.createElement("span");
+        let found = popElement("SPAN");
+        if (found) break;
+
         if (elementQueue.length > 0) {
-          elementQueue[elementQueue.length - 1].appendChild(text);
+          elementQueue[elementQueue.length - 1].appendChild(span);
         } else {
-          container.appendChild(text);
+          container.appendChild(span);
+        }
+
+        elementQueue.push(span);
+        break;
+      case "text":
+        if (elementQueue.length > 0) {
+          elementQueue[elementQueue.length - 1].appendText(token.text);
+        } else {
+          container.appendText(token.text);
         }
         break;
       case "heading": {
         const heading = document.createElement(`h${token.level}`);
-        let found = popElement(`H${token.level}`);
-        if (found) break;
 
-        if (elementQueue.length > 0) {
-          elementQueue[elementQueue.length - 1].appendChild(heading);
-        } else {
-          container.appendChild(heading);
-        }
-        elementQueue.push(heading);
+        parser(
+          tokenizer(token.content, {
+            handleAsterisk: {
+              handleBold: true,
+              handleBulletList: false,
+              handleHorizontalRule: false,
+              handleItalic: true
+            },
+            handleUnderscore: {
+              handleBold: true,
+              handleHorizontalRule: false,
+              handleItalic: true
+            }
+          }),
+          app,
+          appSettings,
+          heading
+        );
+
+        container.appendChild(heading);
         break;
       }
       case "bold": {
@@ -1397,15 +1541,6 @@ export const parser = async (
         }
         break;
       }
-      case "break":
-        if (elementQueue.length > 0) {
-          elementQueue[elementQueue.length - 1].appendChild(
-            document.createElement("br")
-          );
-        } else {
-          container.appendChild(document.createElement("br"));
-        }
-        break;
       case "url":
         const url = document.createElement("a");
         url.href = token.url;
@@ -1471,31 +1606,10 @@ export const parser = async (
         }
         break;
       case "pullquote":
+      case "callout":
       case "blockquote": {
-        const blockquote = document.createElement("blockquote");
-        blockquote.className = `graf--${token.type}`;
-        let found = popElement("BLOCKQUOTE");
-        if (found) break;
-
-        if (elementQueue.length > 0) {
-          elementQueue[elementQueue.length - 1].appendChild(blockquote);
-        } else {
-          container.appendChild(blockquote);
-        }
-        elementQueue.push(blockquote);
-        break;
-      }
-      case "codeBlock": {
-        const codeBlock = document.createElement("pre");
-        const code = document.createElement("span");
-        let language = convertLanguageToValid(token.language);
-        let isValidLang = isValidLanguage(language);
-
-        if (
-          (!isValidLang || appSettings.convertCodeToPng) &&
-          language.length > 0
-        ) {
-          const range = markdownView.editor.getRange(
+        if (token.type === "callout") {
+          let range = markdownView.editor.getRange(
             {
               line: token.lineStart,
               ch: 0
@@ -1510,72 +1624,166 @@ export const parser = async (
           markdownView.editor.refresh();
           await new Promise((resolve) => setTimeout(resolve, 100));
 
-          const cmEmbed = currentDocument.querySelector(
-            ".cm-embed-block"
+          const cmCallout = currentDocument.querySelector(
+            ".cm-callout"
           ) as HTMLElement;
 
-          const hyperMDCodeBlocks =
-            currentDocument.querySelectorAll(".HyperMD-codeblock");
+          const imageSrc = `${token.callout}-widget-${token.lineStart}-${token.lineEnd}.png`;
 
-          if (cmEmbed || hyperMDCodeBlocks) {
-            const imageSrc = `${language}-widget-${token.lineStart}-${token.lineEnd}.png`;
-
-            try {
-              const { width, height } = await saveHtmlAsPng(
-                appSettings.assetDirectory,
-                app,
-                cmEmbed ? cmEmbed : currentDocument,
-                imageSrc,
-                async (_, element) => {
-                  if (element instanceof HTMLElement) {
-                    element.style.backgroundColor = "var(--background-primary)";
-                    element.style.color = "var(--text-normal)";
-                    element.style.fontFamily = "Arial, sans-serif";
-
-                    const hmds = element.querySelectorAll(".cm-hmd-codeblock");
-                    const flair = element.querySelector(".code-block-flair");
-                    for (const hmd of hmds) {
-                      if (hmd instanceof HTMLElement) {
-                        hmd.style.fontFamily = "Roboto Mono, monospace";
-                        hmd.style.fontWeight = "600";
-                      }
-                    }
-
-                    if (flair instanceof HTMLElement) {
-                      flair.className = "";
-                      flair.style.fontFamily = "Arial, sans-serif";
-                      flair.style.position = "absolute";
-                      flair.style.top = "0";
-                      flair.style.right = "0";
-                      flair.style.padding = "0.5em";
-                      flair.style.zIndex = "1";
-                    }
-                  }
+          try {
+            const { width, height } = await saveHtmlAsPng(
+              appSettings.assetDirectory,
+              app,
+              cmCallout ? cmCallout : currentDocument,
+              imageSrc,
+              async (_, element) => {
+                if (element instanceof HTMLElement) {
+                  ensureEveryElementHasStyle(element, {
+                    fontFamily: "Arial, sans-serif"
+                  });
                 }
-              );
+              }
+            );
 
-              const imageBlock = createImage(imageSrc, "Code Block Widget");
-              const image = imageBlock.querySelector("img") as HTMLImageElement;
-              image.setAttribute("data-width", width.toString());
-              image.setAttribute("data-height", height.toString());
-              imageBlock.style.maxWidth = `${width}px`;
-              imageBlock.style.maxHeight = `${height}px`;
+            const imageBlock = createImage(imageSrc, "Code Block Widget");
+            const image = imageBlock.querySelector("img") as HTMLImageElement;
+            image.setAttribute("data-width", width.toString());
+            image.setAttribute("data-height", height.toString());
+            imageBlock.style.maxWidth = `${width}px`;
+            imageBlock.style.maxHeight = `${height}px`;
 
-              container.appendChild(imageBlock);
-            } catch (e) {
-              console.error(e);
-            }
+            container.appendChild(imageBlock);
+          } catch (e) {
+            console.error(e);
           }
 
           markdownView.editor.setValue(currentValue);
         } else {
+          const blockquote = document.createElement("blockquote");
+          blockquote.className = `graf--${token.type}`;
+
+          parser(
+            tokenizer(token.content, {
+              handleAsterisk: {
+                handleBold: true,
+                handleBulletList: false,
+                handleHorizontalRule: false,
+                handleItalic: true
+              },
+              handleUnderscore: {
+                handleBold: true,
+                handleHorizontalRule: false,
+                handleItalic: true
+              },
+              handleExclamation: true,
+              useNewLine: true
+            }),
+            app,
+            appSettings,
+            blockquote
+          );
+
+          container.appendChild(blockquote);
+        }
+        break;
+      }
+      case "codeBlock": {
+        let language = convertLanguageToValid(token.language);
+        let isValidLang = isValidLanguage(language);
+
+        if (
+          (!isValidLang || appSettings.convertCodeToPng) &&
+          language.length > 0
+        ) {
+          markdownView.editor.setValue(
+            `\`\`\`${language}\n${token.content}\n\`\`\``
+          );
+          markdownView.editor.refresh();
+          await new Promise((resolve) => setTimeout(resolve, 100));
+
+          let cmEmbed = currentDocument.querySelector(
+            ".cm-embed-block"
+          ) as HTMLElement;
+
+          const imageSrc = `${language}-widget-${token.lineStart}-${token.lineEnd}.png`;
+
+          try {
+            if (!cmEmbed) {
+              cmEmbed = createDiv();
+
+              while (currentDocument.firstChild) {
+                if (
+                  currentDocument.firstChild instanceof HTMLElement &&
+                  currentDocument.firstChild.className.contains(
+                    "HyperMD-codeblock"
+                  )
+                ) {
+                  cmEmbed.appendChild(currentDocument.firstChild);
+                } else {
+                  currentDocument.removeChild(currentDocument.firstChild);
+                }
+              }
+
+              currentDocument.appendChild(cmEmbed);
+            }
+
+            const { width, height } = await saveHtmlAsPng(
+              appSettings.assetDirectory,
+              app,
+              cmEmbed,
+              imageSrc,
+              async (_, element) => {
+                if (element instanceof HTMLElement) {
+                  element.style.backgroundColor = "var(--background-primary)";
+                  element.style.color = "var(--text-normal)";
+                  ensureEveryElementHasStyle(element, {
+                    fontFamily: "Arial, sans-serif"
+                  });
+
+                  const hmds = element.querySelectorAll(".cm-hmd-codeblock");
+                  const flair = element.querySelector(".code-block-flair");
+                  for (const hmd of hmds) {
+                    if (hmd instanceof HTMLElement) {
+                      hmd.style.fontFamily = "Roboto Mono, monospace";
+                      hmd.style.fontWeight = "600";
+                    }
+                  }
+
+                  if (flair instanceof HTMLElement) {
+                    flair.className = "";
+                    flair.style.fontFamily = "Arial, sans-serif";
+                    flair.style.position = "absolute";
+                    flair.style.top = "0";
+                    flair.style.right = "0";
+                    flair.style.padding = "0.5em";
+                    flair.style.zIndex = "1";
+                  }
+                }
+              }
+            );
+
+            const imageBlock = createImage(imageSrc, "Code Block Widget");
+            const image = imageBlock.querySelector("img") as HTMLImageElement;
+            image.setAttribute("data-width", width.toString());
+            image.setAttribute("data-height", height.toString());
+            imageBlock.style.maxWidth = `${width}px`;
+            imageBlock.style.maxHeight = `${height}px`;
+
+            container.appendChild(imageBlock);
+          } catch (e) {
+            console.error(e);
+          }
+
+          markdownView.editor.setValue(currentValue);
+        } else {
+          const codeBlock = document.createElement("pre");
+          const code = document.createElement("span");
           codeBlock.setAttribute(
             "data-code-block-mode",
             isValidLang ? "2" : language.length > 0 ? "1" : "0"
           );
-          codeBlock.setAttribute("data-testid", "editorCodeBlockParagraph");
-          codeBlock.setAttribute("data-code-block-lang", language);
-          code.setAttribute("data-testid", "editorParagraphText");
+          if (language.length > 0)
+            codeBlock.setAttribute("data-code-block-lang", language);
 
           if (language.length > 0) {
             code.className = token.language;
@@ -1583,29 +1791,28 @@ export const parser = async (
               language === "html" || language === "xml"
                 ? htmlEntities(token.content)
                 : token.content;
+            codeBlock.appendChild(code);
           } else {
-            await parser(
-              tokenizer(token.content, {
-                handleAsterisk: {
-                  handleBold: true,
-                  handleBulletList: false,
-                  handleHorizontalRule: false,
-                  handleItalic: true
-                },
-                handleUnderscore: {
-                  handleBold: true,
-                  handleHorizontalRule: false,
-                  handleItalic: true
-                },
-                handleBreaks: true
-              }),
-              app,
-              appSettings,
-              code
-            );
+            // Solves the issue of first line not being correctly rendered
+            codeBlock.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
+            const tokens = tokenizer(token.content, {
+              handleAsterisk: {
+                handleBold: true,
+                handleBulletList: false,
+                handleHorizontalRule: false,
+                handleItalic: true
+              },
+              handleUnderscore: {
+                handleBold: true,
+                handleHorizontalRule: false,
+                handleItalic: true
+              },
+              useNewLine: true
+            });
+
+            await parser(tokens, app, appSettings, codeBlock);
           }
 
-          codeBlock.appendChild(code);
           container.appendChild(codeBlock);
         }
         break;
@@ -1676,19 +1883,31 @@ export const parser = async (
           footnoteMap[token.id] = display;
         }
         const footnote = document.createElement("p");
+        const footnoteId = document.createElement("bold");
+        const footnoteContent = document.createElement("code");
+        footnote.appendChild(footnoteId);
+        footnote.appendChild(footnoteContent);
+
         footnote.id = token.id;
         footnote.setAttribute("name", token.id);
 
-        const footnoteId = document.createElement("bold");
         footnoteId.textContent = `${display}. `;
-        await parser(tokenizer(token.text), app, appSettings, footnote);
-        footnote.prepend(footnoteId);
+        await parser(tokenizer(token.text), app, appSettings, footnoteContent);
         footnote.id = token.id;
         footnote.setAttribute("name", token.id);
 
         footnotes[display] = footnote;
         break;
       }
+      case "break":
+        if (elementQueue.length > 0) {
+          elementQueue[elementQueue.length - 1].appendChild(
+            document.createElement("br")
+          );
+        } else {
+          container.appendChild(document.createElement("br"));
+        }
+        break;
       case "table": {
         const range = markdownView.editor.getRange(
           {
@@ -1783,8 +2002,8 @@ export const parser = async (
   );
 
   for (const heading of headings) {
-    heading.setAttribute("id", heading.textContent);
-    heading.setAttribute("name", heading.textContent);
+    heading.setAttribute("id", heading.textContent.trim());
+    heading.setAttribute("name", heading.textContent.trim());
   }
 
   if (Object.keys(footnotes).length > 0) {

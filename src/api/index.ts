@@ -70,13 +70,15 @@ export class MediumPublishAPI {
       html.insertAfter(createHeader(fileName), html.firstChild);
     }
 
+    let content = await this.altHtml(html);
+
     const request: RequestParams = {
       url: `${url}/users/${this.plugin.settings.id}/posts`,
       method: "POST",
       headers: this.getHeaders(this.plugin.settings.token),
       body: JSON.stringify({
         ...body,
-        content: await this.altHtml(html),
+        content,
         contentFormat: "html"
       })
     };

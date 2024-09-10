@@ -37,7 +37,7 @@ class ReactModal extends Modal {
       case "TokenValidatorModal":
         return <TokenValidatorModal modal={this} />;
       case "PublishModal":
-        return <PublishModal modal={this} />;
+        return <PublishModal />;
     }
   }
 }

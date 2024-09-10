@@ -106,20 +106,38 @@ export const saveHtmlAsPng = async (
   app: App,
   element: HTMLElement,
   fileName: string,
-  onclone?: (doc: Document, element: Element) => void,
-  scaleFactor: number = 4
+  onclone?: (doc: Document, element: Element) => void
 ): Promise<{ width: number; height: number } | null> => {
   try {
+    const scale = 3;
     const canvas = await html2canvas(element, {
-      scale: scaleFactor,
+      scale,
+      useCORS: true,
       allowTaint: true,
       logging: false,
       onclone
     });
 
-    const { width, height } = canvas;
+    const originalWidth = canvas.width;
+    const originalHeight = canvas.height;
 
-    const dataUrl = canvas.toDataURL("image/png", 1.0);
+    const targetWidth = 1920;
+    const ratio = targetWidth / originalWidth;
+    const targetHeight = originalHeight * ratio;
+
+    const resizedCanvas = document.createElement("canvas");
+    resizedCanvas.width = targetWidth;
+    resizedCanvas.height = targetHeight;
+
+    const context = resizedCanvas.getContext("2d");
+
+    if (context) {
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.drawImage(canvas, 0, 0, targetWidth, targetHeight);
+    }
+
+    const dataUrl = resizedCanvas.toDataURL("image/png", 1.0);
     const base64Data = dataUrl.split(",")[1];
     const arrayBuffer = Uint8Array.from(
       Buffer.from(base64Data, "base64")
@@ -139,13 +157,12 @@ export const saveHtmlAsPng = async (
       await app.vault.createBinary(filePath, arrayBuffer);
     }
 
-    return { width, height };
+    return { width: targetWidth, height: targetHeight };
   } catch (error) {
     console.error("Error capturing element:", error);
     return null;
   }
 };
-
 export const createImage = (src: string, alt: string): HTMLElement => {
   const div = document.createElement("div");
   div.className = "aspectRatioPlaceholder is-locked";

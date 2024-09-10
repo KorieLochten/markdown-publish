@@ -14,6 +14,8 @@ export type Settings = {
   token: string;
   assetDirectory: string;
   convertCodeToPng: boolean;
+  createTOC: boolean;
+  useDarkTheme: boolean;
 } & MeData;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -24,7 +26,9 @@ export const DEFAULT_SETTINGS: Settings = {
   name: "",
   url: "",
   imageUrl: "",
-  convertCodeToPng: false
+  convertCodeToPng: false,
+  createTOC: true,
+  useDarkTheme: false
 };
 
 export class MediumPublishSettingTab extends PluginSettingTab {
@@ -60,6 +64,19 @@ export class MediumPublishSettingTab extends PluginSettingTab {
     this.createItemControl(setting.controlEl);
 
     new Setting(containerEl)
+      .setName("Use Dark Theme")
+      .setDesc(
+        "Use dark theme for the generated images. Light theme is used by default for better compatibility with Medium"
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.useDarkTheme);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.useDarkTheme = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
       .setName("Code Snippets as PNG")
       .setDesc(
         "Instead of using Medium's code block, convert code snippets to PNG images"
@@ -68,6 +85,17 @@ export class MediumPublishSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.convertCodeToPng);
         toggle.onChange(async (value) => {
           this.plugin.settings.convertCodeToPng = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Create TOC")
+      .setDesc("Create a Table of Contents for the post")
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.createTOC);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.createTOC = value;
           await this.plugin.saveSettings();
         });
       });

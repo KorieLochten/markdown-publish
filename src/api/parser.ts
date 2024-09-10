@@ -1,4 +1,4 @@
-import { App, EditorScrollInfo, MarkdownView } from "obsidian";
+import { App, MarkdownView } from "obsidian";
 import {
   convertLanguageToValid,
   createImage,
@@ -1630,31 +1630,39 @@ export const parser = async (
 
           const imageSrc = `${token.callout}-widget-${token.lineStart}-${token.lineEnd}.png`;
 
-          try {
-            const { width, height } = await saveHtmlAsPng(
-              appSettings.assetDirectory,
-              app,
-              cmCallout ? cmCallout : currentDocument,
-              imageSrc,
-              async (_, element) => {
-                if (element instanceof HTMLElement) {
-                  ensureEveryElementHasStyle(element, {
-                    fontFamily: "Arial, sans-serif"
-                  });
+          if (cmCallout) {
+            try {
+              const { width, height } = await saveHtmlAsPng(
+                appSettings.assetDirectory,
+                app,
+                cmCallout,
+                imageSrc,
+                async (doc, element) => {
+                  doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
+                  doc.body.toggleClass(
+                    "theme-light",
+                    !appSettings.useDarkTheme
+                  );
+                  if (element instanceof HTMLElement) {
+                    element.style.backgroundColor = "var(--background-primary)";
+                    ensureEveryElementHasStyle(element, {
+                      fontFamily: "Arial, sans-serif"
+                    });
+                  }
                 }
-              }
-            );
+              );
 
-            const imageBlock = createImage(imageSrc, "Code Block Widget");
-            const image = imageBlock.querySelector("img") as HTMLImageElement;
-            image.setAttribute("data-width", width.toString());
-            image.setAttribute("data-height", height.toString());
-            imageBlock.style.maxWidth = `${width}px`;
-            imageBlock.style.maxHeight = `${height}px`;
+              const imageBlock = createImage(imageSrc, "Code Block Widget");
+              const image = imageBlock.querySelector("img") as HTMLImageElement;
+              image.setAttribute("data-width", width.toString());
+              image.setAttribute("data-height", height.toString());
+              imageBlock.style.maxWidth = `${width}px`;
+              imageBlock.style.maxHeight = `${height}px`;
 
-            container.appendChild(imageBlock);
-          } catch (e) {
-            console.error(e);
+              container.appendChild(imageBlock);
+            } catch (e) {
+              console.error(e);
+            }
           }
 
           markdownView.editor.setValue(currentValue);
@@ -1696,7 +1704,7 @@ export const parser = async (
           language.length > 0
         ) {
           markdownView.editor.setValue(
-            `\`\`\`${language}\n${token.content}\n\`\`\``
+            `\`\`\`${language}\n${token.content}\`\`\``
           );
           markdownView.editor.refresh();
           await new Promise((resolve) => setTimeout(resolve, 100));
@@ -1732,7 +1740,9 @@ export const parser = async (
               app,
               cmEmbed,
               imageSrc,
-              async (_, element) => {
+              async (doc, element) => {
+                doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
+                doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
                 if (element instanceof HTMLElement) {
                   element.style.backgroundColor = "var(--background-primary)";
                   element.style.color = "var(--text-normal)";
@@ -1938,42 +1948,14 @@ export const parser = async (
               app,
               table,
               imageSrc,
-              (_, element) => {
+              (doc, element) => {
+                doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
+                doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
                 if (element instanceof HTMLElement) {
-                  element.style.fontFamily = "Arial, sans-serif";
-                }
-
-                element.className = "";
-                const thead = element.querySelector("thead");
-                const tbody = element.querySelector("tbody");
-
-                for (const tr of thead.querySelectorAll("tr")) {
-                  for (const th of tr.querySelectorAll("th")) {
-                    th.className = "";
-
-                    for (const child of Array.from(th.children)) {
-                      if (child.className.contains("drag-handle")) {
-                        th.removeChild(child);
-                      } else {
-                        th.style.textAlign = "left";
-                        th.style.fontWeight = "bold";
-                      }
-                    }
-                  }
-                }
-
-                for (const tr of tbody.querySelectorAll("tr")) {
-                  for (const td of tr.querySelectorAll("td")) {
-                    td.className = "";
-
-                    for (const child of Array.from(td.children)) {
-                      if (child.className.contains("drag-handle")) {
-                        td.removeChild(child);
-                      } else {
-                        td.style.textAlign = "left";
-                      }
-                    }
-                  }
+                  element.style.backgroundColor = "var(--background-primary)";
+                  ensureEveryElementHasStyle(element, {
+                    fontFamily: "Arial, sans-serif"
+                  });
                 }
               }
             );

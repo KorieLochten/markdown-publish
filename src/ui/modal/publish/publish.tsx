@@ -24,7 +24,7 @@ const Tag = ({ tag, onDelete }: TagProps) => {
   );
 };
 
-export const PublishModal = ({ modal }: { modal: Modal }) => {
+export const PublishModal = () => {
   const { plugin } = usePluginContext();
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState<PublishStatus>("public");
@@ -38,11 +38,11 @@ export const PublishModal = ({ modal }: { modal: Modal }) => {
 
   useEffect(() => {
     const load = async () => {
-      const currentFile =
+      const currentView =
         plugin.app.workspace.getActiveViewOfType(MarkdownView);
-      if (currentFile) {
-        setTitle(currentFile.file.basename);
-        setCurrentFile(currentFile.file.path);
+      if (currentView) {
+        setTitle(currentView.file.basename);
+        setCurrentFile(currentView.file.path);
       } else {
         new Notice("No markdown file is being viewed");
       }

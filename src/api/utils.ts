@@ -96,9 +96,12 @@ export const isValidLanguage = (language: string): boolean => {
 };
 
 export const createLinkElement = (href: string, text: string) => {
-  return `<a href="${href}" target=${
-    text.includes("http") ? "_blank" : "_self"
-  }>${text}</a>`;
+  const a = document.createElement("a");
+  a.href = href;
+  a.innerText = text;
+  a.target = text.includes("http") ? "_blank" : "_self";
+
+  return a;
 };
 
 export const saveHtmlAsPng = async (
@@ -165,7 +168,7 @@ export const saveHtmlAsPng = async (
 };
 export const createImage = (src: string, alt: string): HTMLElement => {
   const div = document.createElement("div");
-  div.className = "aspectRatioPlaceholder is-locked";
+  div.className = "aspectRatioPlaceholder is-locked image";
   const img = new Image();
   const caption = document.createElement("figcaption");
   caption.className = "imageCaption";
@@ -219,4 +222,111 @@ export const ensureEveryElementHasStyle = (
       }
     }
   }
+};
+
+type TOCItem = {
+  level: number;
+  element: HTMLElement;
+  children: TOCItem[];
+};
+
+export const createTOC = (element: HTMLElement): HTMLElement => {
+  const tocContainer = createEl("pre");
+  const toc = createEl("code");
+  toc.innerHTML = `<strong>Table of Contents</strong>\n`;
+  tocContainer.setAttribute("data-code-block-mode", "0");
+  tocContainer.appendChild(toc);
+
+  const firstHeader = element.querySelector("h1");
+  if (!firstHeader) return toc;
+
+  const index = Array.from(element.children).indexOf(firstHeader);
+
+  let stack: TOCItem[] = [];
+  let headings: TOCItem[] = [];
+  let currentLevel = 0;
+
+  const getId = (level: number) => {
+    let id = `${headings.length + 1}`;
+    let currentHeading = stack[0];
+    for (let i = 1; i < level; i++) {
+      if (!currentHeading) {
+        break;
+      }
+      let currentChild =
+        currentHeading.children[currentHeading.children.length - 1];
+      id += currentHeading.children.length;
+      currentHeading = currentChild;
+    }
+
+    return id;
+  };
+
+  for (let i = index; i < element.children.length; i++) {
+    const child = element.children[i];
+    if (child instanceof HTMLHeadingElement) {
+      const headingContent = child.textContent.trim();
+      const headingId = headingContent.replaceAll(" ", "-");
+      const level = parseInt(child.tagName[1]);
+
+      if (level === 1 && stack.length > 0) {
+        headings.push(stack[0]);
+        stack = [];
+      }
+
+      const tocItem: TOCItem = {
+        level,
+        element: child,
+        children: []
+      };
+
+      if (level > currentLevel) {
+        if (stack.length > 0) {
+          stack[stack.length - 1].children.push(tocItem);
+        }
+        stack.push(tocItem);
+      } else {
+        while (stack.length > 0 && stack[stack.length - 1].level >= level) {
+          stack.pop();
+        }
+        if (stack.length > 0) {
+          stack[stack.length - 1].children.push(tocItem);
+        }
+        stack.push(tocItem);
+      }
+
+      const id = `${getId(level)}-${headingId}`;
+      child.setAttribute("name", id);
+      child.setAttribute("id", id);
+
+      currentLevel = level;
+    }
+  }
+
+  if (stack.length > 0) {
+    headings.push(stack[0]);
+  }
+
+  const renderTOC = (items: TOCItem[], container: HTMLElement) => {
+    items.forEach((item, index) => {
+      const span = createEl("span");
+      span.appendText("  ".repeat(item.level - 1) + `${index + 1}.`);
+      span.appendChild(
+        createLinkElement(
+          "#" + item.element.id,
+          item.element.textContent.trim()
+        )
+      );
+      span.appendText("\n");
+      container.appendChild(span);
+
+      if (item.children.length > 0) {
+        renderTOC(item.children, container);
+      }
+    });
+  };
+
+  renderTOC(headings, toc);
+
+  return tocContainer;
 };

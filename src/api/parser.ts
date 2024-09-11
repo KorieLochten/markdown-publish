@@ -1111,7 +1111,7 @@ export const tokenizer = (
             tokens.push({
               type: "heading",
               level: count,
-              content: line.slice(cursor + 1)
+              content: line.slice(cursor + count)
             });
             cursor = line.length + 1;
             state = "TEXT";
@@ -1416,7 +1416,6 @@ export const parser = async (
   appSettings: Settings,
   element?: HTMLElement
 ): Promise<HTMLElement> => {
-  console.log(tokens);
   const container = element || document.createElement("div");
 
   const currentDocument = document.querySelector(
@@ -1977,15 +1976,6 @@ export const parser = async (
         markdownView.editor.setValue(currentValue);
       }
     }
-  }
-
-  const headings = Array.from(
-    container.querySelectorAll("h1, h2, h3, h4, h5, h6")
-  );
-
-  for (const heading of headings) {
-    heading.setAttribute("id", heading.textContent.trim());
-    heading.setAttribute("name", heading.textContent.trim());
   }
 
   if (Object.keys(footnotes).length > 0) {

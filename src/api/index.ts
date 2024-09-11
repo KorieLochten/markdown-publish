@@ -1,7 +1,12 @@
 import MediumPublishPlugin from "src/main";
 import { obsidianFetch, RequestParams } from "./fetch";
 import { Notice, TFile } from "obsidian";
-import { createHeader, getImageDimensions, parseResponse } from "./utils";
+import {
+  createHeader,
+  createTOC,
+  getImageDimensions,
+  parseResponse
+} from "./utils";
 import { ImageResponse, MeResponse, PublishResponse } from "./response";
 import { parser, tokenizer } from "./parser";
 
@@ -66,9 +71,48 @@ export class MediumPublishAPI {
           )
         : createDiv(fileContent);
 
-    if (html.firstChild instanceof HTMLElement) {
-      html.insertAfter(createHeader(fileName), html.firstChild);
+    const toc = createTOC(html);
+
+    let firstChild = html.firstChild;
+    let heading: HTMLElement;
+
+    if (
+      firstChild instanceof HTMLElement &&
+      firstChild.className.contains("image")
+    ) {
+      heading = html.insertAfter(createHeader(fileName), firstChild);
+    } else {
+      heading = html.insertBefore(createHeader(fileName), firstChild);
     }
+
+    if (this.plugin.settings.createTOC) {
+      let index = html.indexOf(heading) + 1;
+      let breakCount = 0;
+
+      while (true) {
+        let sibling = html.children[index];
+
+        if (sibling instanceof HTMLHeadingElement) {
+          html.insertAfter(toc, sibling);
+          break;
+        }
+
+        if (
+          sibling instanceof HTMLElement &&
+          sibling.tagName === "BR" &&
+          breakCount < 2
+        ) {
+          breakCount++;
+          index++;
+          continue;
+        }
+
+        html.insertBefore(toc, sibling);
+        break;
+      }
+    }
+
+    console.log(html);
 
     let content = await this.altHtml(html);
 

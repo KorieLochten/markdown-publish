@@ -108,9 +108,9 @@ export const PublishModal = () => {
           <label className={styles["publish-label"]}>Tags</label>
           <input
             placeholder={
-              Object.keys(tags).length >= 3 ? "Max 3 tags" : "Add tags"
+              Object.keys(tags).length >= 5 ? "Max 5 tags" : "Add tags"
             }
-            disabled={Object.keys(tags).length >= 3}
+            disabled={Object.keys(tags).length >= 5}
             maxLength={25}
             type="text"
             onKeyDown={(e) => {

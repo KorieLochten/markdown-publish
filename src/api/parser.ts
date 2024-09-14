@@ -85,6 +85,7 @@ type CodeBlockToken = {
   type: "codeBlock";
   language: string;
   caption: string;
+  not: boolean;
   content: string;
   lineStart: number;
   lineEnd: number;
@@ -715,9 +716,10 @@ export const tokenizer = (
 
             tokens.push({
               type: "codeBlock",
-              language,
+              language: language.replace(/[^a-zA-Z0-9-#]/g, ""),
               content,
               caption,
+              not: language.charAt(language.length - 1) === "!",
               lineStart,
               lineEnd: index
             });
@@ -1706,7 +1708,7 @@ export const parser = async (
         let isValidLang = isValidLanguage(language);
 
         if (
-          (!isValidLang || appSettings.convertCodeToPng) &&
+          (!isValidLang || (appSettings.convertCodeToPng && !token.not)) &&
           language.length > 0
         ) {
           markdownView.editor.setValue(

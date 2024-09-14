@@ -1,12 +1,12 @@
 import styles from "./publish.module.css";
 import { usePluginContext } from "../../context";
-import { useEffect, useState } from "react";
-import { MarkdownView, Modal, Notice } from "obsidian";
+import { FormEvent, useEffect, useRef, useState } from "react";
+import { MarkdownView, Modal, Notice, prepareFuzzySearch } from "obsidian";
 import { FaRegBell, FaRegBellSlash } from "react-icons/fa";
 import { Button } from "src/ui/components";
+import { PublicationObject } from "src/api/response";
 
 type PublishStatus = "public" | "draft" | "unlisted";
-type Content = "html" | "markdown";
 
 interface TagProps {
   onDelete: () => void;
@@ -28,13 +28,18 @@ export const PublishModal = () => {
   const { plugin } = usePluginContext();
   const [title, setTitle] = useState("");
   const [status, setStatus] = useState<PublishStatus>("public");
-  const [contentType, setContentType] = useState<Content>("markdown");
   const [tags, setTags] = useState<Record<string, string>>({});
   const [notify, setNotify] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [url, setUrl] = useState("");
   const [currentFile, setCurrentFile] = useState<null | string>(null);
+  const [publications, setPublications] = useState<null | PublicationObject[]>(
+    []
+  );
+  const [selectedPublication, setSelectedPublication] = useState<
+    null | string
+  >();
 
   useEffect(() => {
     const load = async () => {
@@ -43,6 +48,12 @@ export const PublishModal = () => {
       if (currentView) {
         setTitle(currentView.file.basename);
         setCurrentFile(currentView.file.path);
+
+        await plugin.services.api.getPublications().then((response) => {
+          if (response) {
+            setPublications(response.data);
+          }
+        });
       } else {
         new Notice("No markdown file is being viewed");
       }
@@ -56,10 +67,11 @@ export const PublishModal = () => {
 
     const body = {
       title,
-      contentFormat: contentType,
+      contentFormat: "markdown" as "markdown" | "html",
       tags: Object.values(tags),
       publishStatus: status,
-      notifyFollowers: notify
+      notifyFollowers: notify,
+      publicationId: selectedPublication
     };
 
     setLoading(true);
@@ -80,20 +92,23 @@ export const PublishModal = () => {
     <div className={styles["publish-container"]}>
       <div>
         <h2>Publish to Medium</h2>
-        <label className={styles["publish-label"]}>Content Type</label>
-        <div className={styles["publish-content-type-container"]}>
-          {["html", "markdown"].map((c: Content) => (
-            <div
-              key={c}
-              className={`${styles["publish-content-type-button"]} ${
-                c === contentType ? styles["active"] : ""
-              }`}
-              onClick={() => setContentType(c)}
-            >
-              {c}
-            </div>
+        <label className={styles["publish-label"]}>Publication</label>
+        <select
+          style={{
+            width: "100%"
+          }}
+          value={selectedPublication}
+          onChange={(e) => {
+            setSelectedPublication(e.target.value);
+          }}
+        >
+          <option value="">None</option>
+          {publications?.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
           ))}
-        </div>
+        </select>
       </div>
       <div className={styles["publish-input"]}>
         <label className={styles["publish-label"]}>Title</label>

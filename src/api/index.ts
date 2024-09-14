@@ -7,13 +7,19 @@ import {
   getImageDimensions,
   parseResponse
 } from "./utils";
-import { ImageResponse, MeResponse, PublishResponse } from "./response";
+import {
+  ImageResponse,
+  MeResponse,
+  PublicationResponse,
+  PublishResponse
+} from "./response";
 import { parser, tokenizer } from "./parser";
 
 const url = "https://api.medium.com/v1";
 
 type PublishBody = {
   title: string;
+  publicationId?: string;
   contentFormat: "html" | "markdown";
   tags: string[];
   publishStatus: "draft" | "public" | "unlisted";
@@ -52,6 +58,23 @@ export class MediumPublishAPI {
     } catch (error) {
       new Notice("Error: " + error);
       return false;
+    }
+  }
+
+  async getPublications(): Promise<PublicationResponse | null> {
+    const request: RequestParams = {
+      url: `${url}/users/${this.plugin.settings.id}/publications`,
+      method: "GET",
+      headers: this.getHeaders(this.plugin.settings.token)
+    };
+
+    const response = await obsidianFetch(request);
+
+    if (response.status === 200) {
+      return parseResponse<PublicationResponse>(response.body);
+    } else {
+      new Notice("Error: " + response.body);
+      return null;
     }
   }
 
@@ -120,12 +143,12 @@ export class MediumPublishAPI {
       }
     }
 
-    console.log(html);
-
     let content = await this.altHtml(html);
 
     const request: RequestParams = {
-      url: `${url}/users/${this.plugin.settings.id}/posts`,
+      url: body.publicationId
+        ? `${url}/publications/${body.publicationId}/posts`
+        : `${url}/users/${this.plugin.settings.id}/posts`,
       method: "POST",
       headers: this.getHeaders(this.plugin.settings.token),
       body: JSON.stringify({

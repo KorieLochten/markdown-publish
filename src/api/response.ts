@@ -36,3 +36,15 @@ export type ImageBody = {
 export type ImageResponse = {
   data: ImageBody;
 };
+
+export type PublicationObject = {
+  id: string;
+  name: string;
+  description: string;
+  url: string;
+  imageUrl: string;
+};
+
+export type PublicationResponse = {
+  data: PublicationObject[];
+};

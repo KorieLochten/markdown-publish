@@ -71,7 +71,9 @@ export class MediumPublishAPI {
           )
         : createDiv(fileContent);
 
-    const toc = createTOC(html);
+    const toc: HTMLHeadElement | null = html.querySelector("h1")
+      ? createTOC(html)
+      : null;
 
     let firstChild = html.firstChild;
     let heading: HTMLElement;
@@ -85,7 +87,7 @@ export class MediumPublishAPI {
       heading = html.insertBefore(createHeader(fileName), firstChild);
     }
 
-    if (this.plugin.settings.createTOC) {
+    if (this.plugin.settings.createTOC && toc) {
       let index = html.indexOf(heading) + 1;
       let breakCount = 0;
 
@@ -93,7 +95,13 @@ export class MediumPublishAPI {
         let sibling = html.children[index];
 
         if (sibling instanceof HTMLHeadingElement) {
-          html.insertAfter(toc, sibling);
+          let level = parseInt(sibling.tagName[1]);
+          if (level === 1) {
+            html.insertBefore(toc, sibling);
+            break;
+          } else {
+            html.insertAfter(toc, sibling);
+          }
           break;
         }
 

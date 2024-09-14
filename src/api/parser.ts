@@ -84,6 +84,7 @@ type HorizontalRuleToken = {
 type CodeBlockToken = {
   type: "codeBlock";
   language: string;
+  caption: string;
   content: string;
   lineStart: number;
   lineEnd: number;
@@ -689,7 +690,12 @@ export const tokenizer = (
           }
 
           if (count >= 3 && rules.handleBacktick.handleCodeBlock) {
-            let language = line.slice(cursor + count - 1).split(" ")[0];
+            const codeBlockTitle = line.slice(cursor + count - 1).split(" ");
+            let language = codeBlockTitle[0];
+            let caption =
+              codeBlockTitle.length > 0
+                ? codeBlockTitle.slice(1).join(" ")
+                : "";
             let content = "";
             let hasEnd = false;
             let lineStart = index;
@@ -711,6 +717,7 @@ export const tokenizer = (
               type: "codeBlock",
               language,
               content,
+              caption,
               lineStart,
               lineEnd: index
             });
@@ -1773,6 +1780,32 @@ export const parser = async (
 
             const imageBlock = createImage(imageSrc, "Code Block Widget");
             const image = imageBlock.querySelector("img") as HTMLImageElement;
+
+            if (token.caption) {
+              const caption = imageBlock.querySelector(
+                "figcaption"
+              ) as HTMLElement;
+
+              await parser(
+                tokenizer(token.caption, {
+                  handleAsterisk: {
+                    handleBold: true,
+                    handleBulletList: false,
+                    handleHorizontalRule: false,
+                    handleItalic: true
+                  },
+                  handleUnderscore: {
+                    handleBold: true,
+                    handleHorizontalRule: false,
+                    handleItalic: true
+                  }
+                }),
+                app,
+                appSettings,
+                caption
+              );
+            }
+
             image.setAttribute("data-width", width.toString());
             image.setAttribute("data-height", height.toString());
             imageBlock.style.maxWidth = `${width}px`;

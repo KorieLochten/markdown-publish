@@ -700,7 +700,6 @@ export const tokenizer = (markdown: string): Block[] => {
   }
 
   flushBuffer();
-  console.log(blocks);
 
   return blocks;
 };

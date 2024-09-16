@@ -112,7 +112,7 @@ export const saveHtmlAsPng = async (
   onclone?: (doc: Document, element: Element) => void
 ): Promise<{ width: number; height: number } | null> => {
   try {
-    const scale = 3;
+    const scale = 4;
     const canvas = await html2canvas(element, {
       scale,
       useCORS: true,
@@ -124,7 +124,7 @@ export const saveHtmlAsPng = async (
     const originalWidth = canvas.width;
     const originalHeight = canvas.height;
 
-    const targetWidth = 1920;
+    const targetWidth = 2560;
     const ratio = targetWidth / originalWidth;
     const targetHeight = originalHeight * ratio;
 
@@ -135,8 +135,6 @@ export const saveHtmlAsPng = async (
     const context = resizedCanvas.getContext("2d");
 
     if (context) {
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
       context.drawImage(canvas, 0, 0, targetWidth, targetHeight);
     }
 
@@ -168,7 +166,7 @@ export const saveHtmlAsPng = async (
 };
 export const createImage = (src: string, alt: string): HTMLElement => {
   const div = document.createElement("div");
-  div.className = "aspectRatioPlaceholder is-locked image";
+  div.className = "aspectRatioPlaceholder is-locked";
   const img = new Image();
   const caption = document.createElement("figcaption");
   caption.className = "imageCaption";

@@ -101,13 +101,15 @@ export class MediumPublishAPI {
     let firstChild = html.firstChild;
     let heading: HTMLElement;
 
-    if (
-      firstChild instanceof HTMLElement &&
-      firstChild.className.contains("image")
-    ) {
-      heading = html.insertAfter(createHeader(fileName), firstChild);
+    if (firstChild instanceof HTMLHeadingElement) {
+      let level = parseInt(firstChild.tagName[1]);
+      if (level === 1) {
+        heading = firstChild;
+      } else {
+        heading = html.insertBefore(createHeader(fileName), firstChild);
+      }
     } else {
-      heading = html.insertBefore(createHeader(fileName), firstChild);
+      heading = html.insertAfter(createHeader(fileName), firstChild);
     }
 
     if (this.plugin.settings.createTOC && toc) {

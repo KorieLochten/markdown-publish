@@ -129,7 +129,7 @@ export const PublishModal = () => {
             maxLength={25}
             type="text"
             onKeyDown={(e) => {
-              if (e.key === "Enter") {
+              if (e.key === "Enter" && e.currentTarget.value.length > 0) {
                 const newTags = { ...tags };
                 let value = e.currentTarget.value;
                 if (newTags[value]) {

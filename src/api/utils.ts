@@ -310,7 +310,7 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
   const renderTOC = (items: TOCItem[], container: HTMLElement) => {
     items.forEach((item, index) => {
       const span = createEl("span");
-      span.appendText("  ".repeat(item.level - 1) + `${index + 1}.`);
+      span.appendText("\t".repeat(item.level - 1) + `${index + 1}.`);
       span.appendChild(
         createLinkElement(
           "#" + item.element.id,
@@ -329,4 +329,41 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
   renderTOC(headings, toc);
 
   return tocContainer;
+};
+
+type CharCheckRules = {
+  isNumber?: boolean;
+  isLetter?: boolean;
+  isSpace?: boolean;
+  isSpecial?: boolean;
+  isUnique?: string;
+};
+
+const isNumber = (char: string): boolean => {
+  return /\d/.test(char);
+};
+
+const isLetter = (char: string): boolean => {
+  return /[a-zA-Z]/.test(char);
+};
+
+const isSpace = (char: string): boolean => {
+  return /\s/.test(char);
+};
+
+const isSpecial = (char: string): boolean => {
+  return /[!@#$%^&*(),.?":{}|<>]/.test(char);
+};
+
+const isUnique = (char: string, unique: string): boolean => {
+  return char === unique;
+};
+
+export const checkChar = (rules: CharCheckRules, char: string): boolean => {
+  if (rules.isNumber && isNumber(char)) return true;
+  if (rules.isLetter && isLetter(char)) return true;
+  if (rules.isSpace && isSpace(char)) return true;
+  if (rules.isSpecial && isSpecial(char)) return true;
+  if (rules.isUnique && isUnique(char, rules.isUnique)) return true;
+  return false;
 };

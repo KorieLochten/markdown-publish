@@ -700,14 +700,39 @@ export const tokenizer = (
             let content = "";
             let hasEnd = false;
             let lineStart = index;
+
             for (let i = index + 1; i < lines.length; i++) {
-              if (lines[i].startsWith("`".repeat(count - 1))) {
-                index = i;
-                hasEnd = true;
-                break;
+              let isLineEnd = false;
+              if (lines[i].startsWith("`")) {
+                let count = 1;
+
+                for (let j = 1; j < lines[i].length; j++) {
+                  if (lines[i][j] === "`") {
+                    count++;
+                  } else {
+                    break;
+                  }
+                }
+
+                if (count >= 3) {
+                  isLineEnd = true;
+                  for (let j = count; j < lines[i].length; j++) {
+                    if (lines[i][j] !== " " && lines[i][j] !== "\t") {
+                      isLineEnd = false;
+                      break;
+                    }
+                  }
+
+                  if (isLineEnd) {
+                    index = i;
+                    hasEnd = true;
+                    break;
+                  }
+                }
               }
               content += lines[i] + "\n";
             }
+
             if (!hasEnd) {
               index = lines.length;
             }

@@ -1437,7 +1437,6 @@ export const parser = async (
         }
 
         if (validId && idIndex !== -1) {
-          console.log(block.content);
           let id = block.content.slice(idIndex + 1);
           paragraph.setAttribute("name", `^${id}`);
           paragraph.setAttribute("id", `^${id}`);

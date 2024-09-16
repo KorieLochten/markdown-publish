@@ -219,11 +219,13 @@ export const tokenizer = (markdown: string): Block[] => {
               index = lines.length;
             }
 
+            language = language.replace(/[^a-zA-Z0-9-#]/g, "");
+
             blocks.push({
               type: "code",
-              language: language.replace(/[^a-zA-Z0-9-#]/g, ""),
+              language,
               content,
-              caption,
+              caption: caption,
               not: language.charAt(language.length - 1) === "!",
               lineStart,
               lineEnd: index
@@ -1532,7 +1534,9 @@ export const parser = async (
 
         markdownView.editor.setValue(range);
         markdownView.editor.refresh();
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) =>
+          setTimeout(resolve, appSettings.loadTime)
+        );
 
         const cmCallout = currentDocument.querySelector(
           ".cm-callout"
@@ -1602,7 +1606,9 @@ export const parser = async (
             `\`\`\`${language}\n${block.content}\`\`\``
           );
           markdownView.editor.refresh();
-          await new Promise((resolve) => setTimeout(resolve, 100));
+          await new Promise((resolve) =>
+            setTimeout(resolve, appSettings.loadTime)
+          );
 
           let cmEmbed = currentDocument.querySelector(
             ".cm-embed-block"
@@ -1655,13 +1661,7 @@ export const parser = async (
                   }
 
                   if (flair instanceof HTMLElement) {
-                    flair.className = "";
-                    flair.style.fontFamily = "Arial, sans-serif";
-                    flair.style.position = "absolute";
-                    flair.style.top = "0";
-                    flair.style.right = "0";
-                    flair.style.padding = "0.5em";
-                    flair.style.zIndex = "1";
+                    flair.style.display = "none";
                   }
                 }
               }
@@ -1670,13 +1670,17 @@ export const parser = async (
             const imageBlock = createImage(imageSrc, "Code Block Widget");
             const image = imageBlock.querySelector("img") as HTMLImageElement;
 
-            if (block.caption) {
+            if (
+              block.caption ||
+              (appSettings.useCodeBlockLanguageForCaption &&
+                language.length > 0)
+            ) {
               const caption = imageBlock.querySelector(
                 "figcaption"
               ) as HTMLElement;
 
               parseBlock(
-                tokenizeBlock(block.caption),
+                tokenizeBlock(block.caption || language),
                 app,
                 appSettings,
                 caption,
@@ -1767,7 +1771,9 @@ export const parser = async (
 
         markdownView.editor.setValue(range);
         markdownView.editor.refresh();
-        await new Promise((resolve) => setTimeout(resolve, 100));
+        await new Promise((resolve) =>
+          setTimeout(resolve, appSettings.loadTime)
+        );
 
         const cmEmbed = currentDocument.querySelector(
           ".cm-embed-block"

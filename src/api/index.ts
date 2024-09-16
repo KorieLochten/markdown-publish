@@ -146,7 +146,15 @@ export class MediumPublishAPI {
       }
     }
 
-    let content = await this.altHtml(html);
+    let { html: content, imageMap } = await this.altHtml(html);
+
+    if (Object.keys(imageMap).length > 0) {
+      for (const [link, url] of Object.entries(imageMap)) {
+        fileContent = fileContent.replaceAll(link, url);
+      }
+
+      await this.plugin.app.vault.adapter.write(path, fileContent);
+    }
 
     const request: RequestParams = {
       url: body.publicationId
@@ -187,7 +195,6 @@ export class MediumPublishAPI {
     const epilogue = `\r\n--${boundary}--\r\n`;
     bodyParts.push(new TextEncoder().encode(epilogue).buffer);
 
-    // Concatenate all parts into a single ArrayBuffer
     const body = concatenateArrayBuffers(bodyParts);
 
     try {
@@ -211,7 +218,10 @@ export class MediumPublishAPI {
     }
   }
 
-  private async altHtml(html: HTMLElement | string): Promise<string> {
+  private async altHtml(html: HTMLElement | string): Promise<{
+    html: string;
+    imageMap: Record<string, string>;
+  }> {
     if (typeof html === "string") {
       const div = document.createElement("div");
       div.innerHTML = html;
@@ -263,7 +273,10 @@ export class MediumPublishAPI {
       }
     }
 
-    return html.innerHTML;
+    return {
+      html: html.innerHTML,
+      imageMap
+    };
   }
 
   private getHeaders(token: string) {

@@ -16,6 +16,8 @@ export type Settings = {
   convertCodeToPng: boolean;
   createTOC: boolean;
   useDarkTheme: boolean;
+  loadTime: number;
+  useCodeBlockLanguageForCaption: boolean;
 } & MeData;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -26,8 +28,10 @@ export const DEFAULT_SETTINGS: Settings = {
   name: "",
   url: "",
   imageUrl: "",
+  loadTime: 100,
   convertCodeToPng: false,
   createTOC: true,
+  useCodeBlockLanguageForCaption: false,
   useDarkTheme: false
 };
 
@@ -90,12 +94,38 @@ export class MediumPublishSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Use Code Block Language for Caption")
+      .setDesc(
+        "Use the language of the code block as the caption for the image if caption is not provided"
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.useCodeBlockLanguageForCaption);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.useCodeBlockLanguageForCaption = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
       .setName("Create TOC")
       .setDesc("Create a Table of Contents for the post")
       .addToggle((toggle) => {
         toggle.setValue(this.plugin.settings.createTOC);
         toggle.onChange(async (value) => {
           this.plugin.settings.createTOC = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    this.createGroup("Advanced");
+
+    new Setting(containerEl)
+      .setName("Load Time")
+      .setDesc("Time in milliseconds to wait before loading each code block")
+      .addText((text) => {
+        text.setValue(this.plugin.settings.loadTime.toString());
+        text.onChange(async (value) => {
+          this.plugin.settings.loadTime = parseInt(value);
           await this.plugin.saveSettings();
         });
       });

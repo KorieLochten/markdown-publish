@@ -365,3 +365,36 @@ export const checkChar = (rules: CharCheckRules, char: string): boolean => {
   if (rules.isUnique && isUnique(char, rules.isUnique)) return true;
   return false;
 };
+
+export const removeComments = (text: string): string => {
+  let result = "";
+
+  for (let i = 0; i < text.length; i++) {
+    let char = text[i];
+    let nextChar = text[i + 1];
+
+    if (char === "%" && nextChar === "%") {
+      let commentCursor = i + 2;
+      let hasEnd = false;
+      for (let j = commentCursor; j < text.length - 1; j++) {
+        let char = text[j];
+        let nextChar = text[j + 1];
+        if (char === "%" && nextChar === "%") {
+          commentCursor = j + 1;
+          hasEnd = true;
+          break;
+        }
+      }
+
+      if (!hasEnd) {
+        commentCursor = text.length;
+      }
+
+      i = commentCursor;
+    } else {
+      result += char;
+    }
+  }
+
+  return result;
+};

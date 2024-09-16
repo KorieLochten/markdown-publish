@@ -5,7 +5,8 @@ import {
   createHeader,
   createTOC,
   getImageDimensions,
-  parseResponse
+  parseResponse,
+  removeComments
 } from "./utils";
 import {
   ImageResponse,
@@ -88,7 +89,7 @@ export class MediumPublishAPI {
     const html =
       body.contentFormat === "markdown"
         ? await parser(
-            tokenizer(fileContent),
+            tokenizer(removeComments(fileContent)),
             this.plugin.app,
             this.plugin.settings
           )

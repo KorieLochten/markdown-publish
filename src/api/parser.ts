@@ -584,7 +584,7 @@ export const tokenizer = (markdown: string): Block[] => {
         if (char === ">") {
           if (nextChar === ">") {
             let quoteIndex = index;
-            let content = line.slice(i + 1);
+            let content = line.slice(i + 2);
             for (let i = index + 1; i < lines.length; i++) {
               let hasEnd = false;
               for (let j = 0; j < lines[i].length; j++) {
@@ -609,7 +609,7 @@ export const tokenizer = (markdown: string): Block[] => {
             flushBuffer();
             blocks.push({
               type: "quote",
-              quoteType: "blockquote",
+              quoteType: "pullquote",
               lineStart: index,
               lineEnd: quoteIndex,
               content
@@ -711,6 +711,7 @@ type Token =
   | ItalicToken
   | TextToken
   | FootnoteUrlToken
+  | Break
   | CodeToken;
 
 type TokenizerState =
@@ -1094,22 +1095,24 @@ export const tokenizeBlock = (markdown: string): Token[] => {
             break;
           }
 
-          for (let i = cursor; i < urlEndCursor; i++) {
-            const quoteMatch = line[i].match(/["'`]/);
-            if (quoteMatch) {
-              switch (quoteMatch[0]) {
-                case '"':
-                  state = "DOUBLE_QUOTE_CAPTION";
-                  break;
-                case "'":
-                  state = "SINGLE_QUOTE_CAPTION";
-                  break;
-                case "`":
-                  state = "BACKTICK_CAPTION";
-                  break;
+          if (currentToken.type === "image") {
+            for (let i = cursor; i < urlEndCursor; i++) {
+              const quoteMatch = line[i].match(/["'`]/);
+              if (quoteMatch) {
+                switch (quoteMatch[0]) {
+                  case '"':
+                    state = "DOUBLE_QUOTE_CAPTION";
+                    break;
+                  case "'":
+                    state = "SINGLE_QUOTE_CAPTION";
+                    break;
+                  case "`":
+                    state = "BACKTICK_CAPTION";
+                    break;
+                }
+                urlEndCursor = i;
+                break;
               }
-              urlEndCursor = i;
-              break;
             }
           }
 
@@ -1370,7 +1373,11 @@ export const tokenizeBlock = (markdown: string): Token[] => {
 
     openTokens = [];
 
-    index += 1;
+    tokens.push({
+      type: "break"
+    });
+
+    index++;
   }
 
   return tokens;
@@ -1421,16 +1428,19 @@ export const parser = async (
             )
           ) {
             validId = true;
+            continue;
           } else if (block.content[i] === "^") {
             idIndex = i;
             break;
           }
+          break;
         }
 
         if (validId && idIndex !== -1) {
+          console.log(block.content);
           let id = block.content.slice(idIndex + 1);
-          paragraph.setAttribute("name", id);
-          paragraph.setAttribute("id", id);
+          paragraph.setAttribute("name", `^${id}`);
+          paragraph.setAttribute("id", `^${id}`);
           block.content = block.content.slice(0, idIndex);
         }
 
@@ -1568,7 +1578,7 @@ export const parser = async (
       }
       case "quote": {
         const blockquote = document.createElement("blockquote");
-        blockquote.className = `graf--${block.type}`;
+        blockquote.className = `graf--${block.quoteType}`;
 
         parseBlock(
           tokenizeBlock(block.content),
@@ -1851,11 +1861,9 @@ const parseBlock = (
   tokens: Token[],
   app: App,
   appSettings: Settings,
-  element: HTMLElement,
+  container: HTMLElement,
   footnoteMap: Record<string, string>
 ): HTMLElement => {
-  const container = element || document.createElement("div");
-
   let elementQueue: HTMLElement[] = [];
 
   const popElement = (tagName: string): boolean => {
@@ -1871,6 +1879,10 @@ const parseBlock = (
 
   for (const token of tokens) {
     switch (token.type) {
+      case "break": {
+        container.appendChild(document.createElement("br"));
+        break;
+      }
       case "text": {
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendText(token.text);

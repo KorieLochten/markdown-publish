@@ -3,6 +3,7 @@ import {
   checkChar,
   convertLanguageToValid,
   createImage,
+  createMarkdownTable,
   ensureEveryElementHasStyle,
   htmlEntities,
   isValidLanguage,
@@ -54,6 +55,7 @@ type BlockBase = {
   lineStart: number;
   lineEnd: number;
   content: string;
+  id?: string;
 };
 
 type Block = (
@@ -97,8 +99,7 @@ type Code = {
 
 type Table = {
   type: "table";
-  start: number;
-  end: number;
+  body: string[][];
 };
 
 type Content = {
@@ -131,11 +132,36 @@ export const tokenizer = (markdown: string): Block[] => {
 
   const flushBuffer = () => {
     if (buffer.length > 0) {
+      let validId = false;
+      let idIndex = -1;
+      let id: string | null = null;
+      for (let i = buffer.length - 1; i >= 0; i--) {
+        if (
+          checkChar(
+            { isLetter: true, isNumber: true, isUnique: "-" },
+            buffer[i]
+          )
+        ) {
+          validId = true;
+          continue;
+        } else if (buffer[i] === "^") {
+          idIndex = i;
+          break;
+        }
+        break;
+      }
+
+      if (validId && idIndex !== -1) {
+        id = buffer.slice(idIndex + 1);
+        buffer = buffer.slice(0, idIndex);
+      }
+
       blocks.push({
         type: "content",
         lineStart: index,
         lineEnd: index,
-        content: buffer
+        content: buffer,
+        id
       });
       buffer = "";
     }
@@ -154,6 +180,94 @@ export const tokenizer = (markdown: string): Block[] => {
       });
       index++;
       continue;
+    }
+
+    let rows = 0;
+
+    if (line.contains("|")) {
+      let headers = line.split("|");
+      let isIndirectTable = headers[0].trim().length !== 0;
+
+      let isValidTable = true;
+
+      let headerDivider = lines[index + 1].split("|");
+
+      for (let i = 0; i < headerDivider.length; i++) {
+        let trimmed = headerDivider[i].trim();
+        if (!isIndirectTable && (i === 0 || i === headerDivider.length - 1)) {
+          if (trimmed.length !== 0) {
+            isValidTable = false;
+            break;
+          }
+        } else {
+          if ("-".repeat(trimmed.length) !== trimmed) {
+            isValidTable = false;
+            break;
+          }
+
+          rows++;
+        }
+      }
+
+      if (
+        ((!isIndirectTable &&
+          headers[headers.length - 1].trim().length === 0) ||
+          isIndirectTable) &&
+        isValidTable
+      ) {
+        let filteredHeaders = (
+          isIndirectTable ? headers : headers.slice(1, -1)
+        ).map((header) => header.trim());
+
+        if (filteredHeaders.length < rows) {
+          filteredHeaders.push(
+            ...Array(rows - filteredHeaders.length).fill("")
+          );
+        }
+
+        let table: string[][] = [filteredHeaders];
+
+        for (let i = index + 2; i < lines.length; i++) {
+          let isValidTable = true;
+
+          let rows = lines[i].split("|");
+
+          if (rows.length == 0 || !lines[i].contains("|")) {
+            break;
+          }
+
+          for (let j = 0; j < rows.length; j++) {
+            let trimmed = rows[j].trim();
+            if (!isIndirectTable && (j === 0 || j === rows.length - 1)) {
+              if (trimmed.length !== 0) {
+                isValidTable = false;
+                break;
+              }
+            }
+          }
+
+          if (isValidTable) {
+            table.push(
+              (isIndirectTable ? rows : rows.slice(1, -1))
+                .map((row) => row.trim())
+                .slice(0, filteredHeaders.length)
+            );
+          } else {
+            break;
+          }
+        }
+
+        flushBuffer();
+        blocks.push({
+          type: "table",
+          lineStart: index,
+          lineEnd: index,
+          content: "",
+          body: table
+        });
+        index += table.length + 1;
+        continue;
+      }
     }
 
     for (let i = 0; i < line.length; i++) {
@@ -418,6 +532,35 @@ export const tokenizer = (markdown: string): Block[] => {
           }
         }
 
+        if (char === "^" && i === 0) {
+          let isValidId = true;
+
+          for (let j = 1; j < line.length; j++) {
+            if (
+              !checkChar(
+                {
+                  isLetter: true,
+                  isNumber: true,
+                  isUnique: "-"
+                },
+                line[j]
+              )
+            ) {
+              isValidId = false;
+              break;
+            }
+          }
+
+          if (isValidId) {
+            for (let j = blocks.length - 1; j >= 0; j--) {
+              if (blocks[j].type !== "break") {
+                blocks[j].id = line.slice(1);
+                break;
+              }
+            }
+          }
+        }
+
         if (char === "-") {
           if (nextChar === " ") {
             let count = 2;
@@ -469,113 +612,6 @@ export const tokenizer = (markdown: string): Block[] => {
                 type: "horizontalRule",
                 lineStart: index,
                 lineEnd: index,
-                content: ""
-              });
-              break;
-            }
-          }
-        }
-
-        if (char === "|") {
-          let isValidTable = false;
-
-          for (let j = i - 1; j < line.length; j++) {
-            if (line[i] !== "|") {
-              let hasEnd = false;
-              for (let j = i; j < line.length; j++) {
-                if (line[j] === "|" && line[j + 1] !== "|") {
-                  isValidTable = true;
-                  hasEnd = true;
-                  i = j;
-                  break;
-                }
-              }
-
-              if (!hasEnd) {
-                break;
-              }
-            }
-          }
-
-          if (isValidTable) {
-            let columnState: "BEFORE_HYPHEN" | "HYPHEN" | "AFTER_HYPHEN" =
-              "BEFORE_HYPHEN";
-
-            let isNextLineValid = true;
-            let nextLine = lines[index + 1];
-
-            if (nextLine && nextLine[0] === "|") {
-              for (let i = 1; i < nextLine.length; i++) {
-                if (!isNextLineValid) break;
-
-                switch (columnState) {
-                  case "BEFORE_HYPHEN": {
-                    if (nextLine[i] === "-") {
-                      columnState = "HYPHEN";
-                    } else if (nextLine[i] !== " ") {
-                      isNextLineValid = false;
-                      break;
-                    }
-                    break;
-                  }
-                  case "HYPHEN": {
-                    if (nextLine[i] !== "-") {
-                      switch (nextLine[i]) {
-                        case " ":
-                          columnState = "AFTER_HYPHEN";
-                          break;
-                        case "|":
-                          columnState = "BEFORE_HYPHEN";
-                          break;
-                        default:
-                          isNextLineValid = false;
-                          break;
-                      }
-                    }
-                    break;
-                  }
-                  case "AFTER_HYPHEN": {
-                    if (nextLine[i] !== " ") {
-                      if (nextLine[i] === "|") {
-                        isNextLineValid = true;
-                        columnState = "BEFORE_HYPHEN";
-                      } else {
-                        isNextLineValid = false;
-                      }
-                    }
-                    break;
-                  }
-                }
-              }
-            }
-
-            if (isNextLineValid) {
-              let charCount = 0;
-
-              for (let i = 0; i < index; i++) {
-                charCount += lines[i].length + 1;
-              }
-
-              let tableIndex = index + 1;
-
-              let barCharCount =
-                charCount + line.length + 1 + nextLine.length + 1;
-              for (let i = tableIndex + 1; i < lines.length; i++) {
-                if (lines[i][0] === "|") {
-                  tableIndex = i;
-                  barCharCount += lines[i].length + 1;
-                } else {
-                  break;
-                }
-              }
-
-              flushBuffer();
-              blocks.push({
-                type: "table",
-                start: charCount,
-                end: barCharCount - 1,
-                lineStart: index,
-                lineEnd: tableIndex,
                 content: ""
               });
               break;
@@ -1416,34 +1452,16 @@ export const parser = async (
   let footnotes: Record<string, HTMLElement> = {};
 
   for (let block of blocks) {
+    if (block.id) {
+      const paragraph = document.createElement("p");
+      paragraph.setAttribute("name", block.id);
+      paragraph.setAttribute("id", block.id);
+      paragraph.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
+      container.appendChild(paragraph);
+    }
     switch (block.type) {
       case "content": {
         const paragraph = document.createElement("p");
-
-        let validId = false;
-        let idIndex = -1;
-        for (let i = block.content.length - 1; i >= 0; i--) {
-          if (
-            checkChar(
-              { isLetter: true, isNumber: true, isUnique: "-" },
-              block.content[i]
-            )
-          ) {
-            validId = true;
-            continue;
-          } else if (block.content[i] === "^") {
-            idIndex = i;
-            break;
-          }
-          break;
-        }
-
-        if (validId && idIndex !== -1) {
-          let id = block.content.slice(idIndex + 1);
-          paragraph.setAttribute("name", `^${id}`);
-          paragraph.setAttribute("id", `^${id}`);
-          block.content = block.content.slice(0, idIndex);
-        }
 
         parseBlock(
           tokenizeBlock(block.content),
@@ -1497,9 +1515,11 @@ export const parser = async (
         break;
       }
       case "list": {
+        const p = document.createElement("p");
         const list = document.createElement(block.ordered ? "ol" : "ul");
         const item = document.createElement("li");
         list.appendChild(item);
+        p.appendChild(list);
 
         parseBlock(
           tokenizeBlock(block.content),
@@ -1509,7 +1529,7 @@ export const parser = async (
           footnoteMap
         );
 
-        container.appendChild(list);
+        container.appendChild(p);
         break;
       }
       case "horizontalRule": {
@@ -1564,7 +1584,9 @@ export const parser = async (
             );
 
             const imageBlock = createImage(imageSrc, "Code Block Widget");
+
             const image = imageBlock.querySelector("img") as HTMLImageElement;
+
             image.setAttribute("data-width", width.toString());
             image.setAttribute("data-height", height.toString());
             imageBlock.style.maxWidth = `${width}px`;
@@ -1758,18 +1780,7 @@ export const parser = async (
         break;
       }
       case "table": {
-        const range = markdownView.editor.getRange(
-          {
-            line: block.lineStart,
-            ch: 0
-          },
-          {
-            line: block.lineEnd + 1,
-            ch: 0
-          }
-        );
-
-        markdownView.editor.setValue(range);
+        markdownView.editor.setValue(createMarkdownTable(block.body));
         markdownView.editor.refresh();
         await new Promise((resolve) =>
           setTimeout(resolve, appSettings.loadTime)
@@ -1932,7 +1943,9 @@ const parseBlock = (
       }
       case "url":
         const url = document.createElement("a");
-        url.href = token.url;
+        url.href = token.url.startsWith("#^")
+          ? `#${token.url.slice(2)}`
+          : token.url;
         url.textContent = token.text;
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendChild(url);
@@ -1993,7 +2006,9 @@ const parseBlock = (
       }
       case "footnoteUrl": {
         const link = document.createElement("a");
-        let url = `#${token.id}`;
+        let url = `#${
+          token.id.charAt(0) === "^" ? token.id.slice(1) : token.id
+        }`;
 
         let id: string;
         if (footnoteMap[token.id]) {

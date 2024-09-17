@@ -124,18 +124,18 @@ export const saveHtmlAsPng = async (
     const originalWidth = canvas.width;
     const originalHeight = canvas.height;
 
-    const targetWidth = 2560;
-    const ratio = targetWidth / originalWidth;
-    const targetHeight = originalHeight * ratio;
+    const desiredWidth = 1280;
+    const ratio = desiredWidth / originalWidth;
+    const desiredHeight = originalHeight * ratio;
 
     const resizedCanvas = document.createElement("canvas");
-    resizedCanvas.width = targetWidth;
-    resizedCanvas.height = targetHeight;
+    resizedCanvas.width = desiredWidth;
+    resizedCanvas.height = desiredHeight;
 
     const context = resizedCanvas.getContext("2d");
 
     if (context) {
-      context.drawImage(canvas, 0, 0, targetWidth, targetHeight);
+      context.drawImage(canvas, 0, 0, desiredWidth, desiredHeight);
     }
 
     const dataUrl = resizedCanvas.toDataURL("image/png", 1.0);
@@ -158,23 +158,26 @@ export const saveHtmlAsPng = async (
       await app.vault.createBinary(filePath, arrayBuffer);
     }
 
-    return { width: targetWidth, height: targetHeight };
+    return { width: resizedCanvas.width, height: resizedCanvas.height };
   } catch (error) {
     console.error("Error capturing element:", error);
     return null;
   }
 };
 export const createImage = (src: string, alt: string): HTMLElement => {
-  const div = document.createElement("div");
+  const figure = document.createElement("figure");
+  figure.setAttribute("data-testid", "editorImageParagraph");
+  const div = createDiv();
   div.className = "aspectRatioPlaceholder is-locked";
+  figure.appendChild(div);
   const img = new Image();
   const caption = document.createElement("figcaption");
   caption.className = "imageCaption";
   img.src = src;
   img.alt = alt;
   div.appendChild(img);
-  div.appendChild(caption);
-  return div;
+  figure.appendChild(caption);
+  return figure;
 };
 
 export const getImageDimensions = (
@@ -397,4 +400,17 @@ export const removeComments = (text: string): string => {
   }
 
   return result;
+};
+
+export const createMarkdownTable = (rows: string[][]): string => {
+  let table = "";
+
+  table += "|" + rows[0].map((cell) => ` ${cell} `).join("|") + "|\n";
+  table += "|" + rows[0].map(() => " --- ").join("|") + "|\n";
+
+  for (let i = 1; i < rows.length; i++) {
+    table += "|" + rows[i].map((cell) => ` ${cell} `).join("|") + "|\n";
+  }
+
+  return table;
 };

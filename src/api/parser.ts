@@ -1798,7 +1798,7 @@ export const parser = async (
             const { width, height } = await saveHtmlAsPng(
               appSettings.assetDirectory,
               app,
-              table,
+              cmEmbed,
               imageSrc,
               (doc, element) => {
                 doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);

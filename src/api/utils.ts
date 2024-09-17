@@ -124,18 +124,18 @@ export const saveHtmlAsPng = async (
     const originalWidth = canvas.width;
     const originalHeight = canvas.height;
 
-    const desiredWidth = 1280;
-    const ratio = desiredWidth / originalWidth;
-    const desiredHeight = originalHeight * ratio;
+    const targetWidth = 2560;
+    const ratio = targetWidth / originalWidth;
+    const targetHeight = originalHeight * ratio;
 
     const resizedCanvas = document.createElement("canvas");
-    resizedCanvas.width = desiredWidth;
-    resizedCanvas.height = desiredHeight;
+    resizedCanvas.width = targetWidth;
+    resizedCanvas.height = targetHeight;
 
     const context = resizedCanvas.getContext("2d");
 
     if (context) {
-      context.drawImage(canvas, 0, 0, desiredWidth, desiredHeight);
+      context.drawImage(canvas, 0, 0, targetWidth, targetHeight);
     }
 
     const dataUrl = resizedCanvas.toDataURL("image/png", 1.0);
@@ -158,12 +158,13 @@ export const saveHtmlAsPng = async (
       await app.vault.createBinary(filePath, arrayBuffer);
     }
 
-    return { width: resizedCanvas.width, height: resizedCanvas.height };
+    return { width: targetWidth, height: targetHeight };
   } catch (error) {
     console.error("Error capturing element:", error);
     return null;
   }
 };
+
 export const createImage = (src: string, alt: string): HTMLElement => {
   const figure = document.createElement("figure");
   figure.setAttribute("data-testid", "editorImageParagraph");

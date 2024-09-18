@@ -8,7 +8,7 @@ import {
   ensureEveryElementHasStyle,
   isValidLanguage,
   saveHtmlAsPng
-} from "./utils";
+} from "../utils";
 import { Settings } from "src/settings";
 
 type ImageToken = {

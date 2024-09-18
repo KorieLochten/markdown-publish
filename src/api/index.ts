@@ -7,14 +7,14 @@ import {
   getImageDimensions,
   parseResponse,
   removeComments
-} from "./utils";
+} from "../utils";
 import {
   ImageResponse,
   MeResponse,
   PublicationResponse,
   PublishResponse
 } from "./response";
-import { parser, tokenizer } from "./parser";
+import { parser, tokenizer } from "../parser";
 
 const url = "https://api.medium.com/v1";
 

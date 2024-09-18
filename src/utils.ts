@@ -299,7 +299,6 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
       }
 
       const id = `${getId(level)}-${headingId}`;
-      child.setAttribute("name", id);
       child.setAttribute("original-id", headingId);
       child.setAttribute("id", id);
 
@@ -315,8 +314,16 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
     items.forEach((item, index) => {
       const span = createEl("span");
       span.appendText("\t".repeat(item.level - 1) + `${index + 1}.`);
+
       const url = "#" + item.element.id;
       const originalId = item.element.getAttribute("original-id");
+      const id = item.element.id;
+      const paragraph = document.createElement("p");
+
+      paragraph.setAttribute("name", id);
+      paragraph.setAttribute("id", id);
+      paragraph.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
+      element.insertBefore(paragraph, item.element);
 
       const anchors = element.querySelectorAll(`a[href="#${originalId}"]`);
       anchors.forEach((a) => {

@@ -1702,18 +1702,16 @@ export const parser = async (
               cmEmbed,
               imageSrc,
               async (doc, element) => {
-                if (doc.body) {
-                  doc.body.toggleClass(
-                    "theme-dark",
-                    (block.useLightTheme && !appSettings.useDarkTheme) ||
-                      (!block.useLightTheme && appSettings.useDarkTheme)
-                  );
-                  doc.body.toggleClass(
-                    "theme-light",
-                    (!block.useLightTheme && !appSettings.useDarkTheme) ||
-                      (block.useLightTheme && appSettings.useDarkTheme)
-                  );
-                }
+                doc.body.toggleClass(
+                  "theme-dark",
+                  (block.useLightTheme && !appSettings.useDarkTheme) ||
+                    (!block.useLightTheme && appSettings.useDarkTheme)
+                );
+                doc.body.toggleClass(
+                  "theme-light",
+                  (!block.useLightTheme && !appSettings.useDarkTheme) ||
+                    (block.useLightTheme && appSettings.useDarkTheme)
+                );
                 if (element instanceof HTMLElement) {
                   element.style.backgroundColor = "var(--background-primary)";
                   element.style.color = "var(--text-normal)";

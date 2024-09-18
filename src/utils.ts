@@ -177,7 +177,6 @@ export const saveHtmlAsPng = async (
 
 export const createImage = (src: string, alt: string): HTMLElement => {
   const figure = document.createElement("figure");
-  figure.setAttribute("data-testid", "editorImageParagraph");
   const div = createDiv();
   div.className = "aspectRatioPlaceholder is-locked";
   figure.appendChild(div);
@@ -300,7 +299,7 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
 
       const id = `${getId(level)}-${headingId}`;
       child.setAttribute("original-id", headingId);
-      child.setAttribute("id", id);
+      child.setAttribute("toc-id", id);
 
       currentLevel = level;
     }
@@ -315,9 +314,9 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
       const span = createEl("span");
       span.appendText("\t".repeat(item.level - 1) + `${index + 1}.`);
 
-      const url = "#" + item.element.id;
       const originalId = item.element.getAttribute("original-id");
-      const id = item.element.id;
+      const id = item.element.getAttribute("toc-id");
+      const url = "#" + id;
       const paragraph = document.createElement("p");
 
       paragraph.setAttribute("name", id);
@@ -426,4 +425,23 @@ export const createMarkdownTable = (rows: string[][]): string => {
   }
 
   return table;
+};
+
+type Dimension = {
+  width: number;
+  height?: number;
+};
+
+export const dimensionFromString = (dimension: string): Dimension | null => {
+  let [width, height] = dimension.split("x").map((d) => parseInt(d));
+
+  if (isNaN(width)) {
+    return null;
+  }
+
+  if (isNaN(height)) {
+    return { width };
+  }
+
+  return { width, height };
 };

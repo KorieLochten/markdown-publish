@@ -5,6 +5,7 @@ import {
   createImage,
   createLinkElement,
   createMarkdownTable,
+  dimensionFromString,
   ensureEveryElementHasStyle,
   isValidLanguage,
   saveHtmlAsPng
@@ -18,7 +19,7 @@ type ImageToken = {
   caption: string;
   dimensions?: {
     width: number;
-    height: number | null;
+    height?: number;
   };
 };
 
@@ -191,13 +192,19 @@ export const tokenizer = (markdown: string): Block[] => {
 
     let rows = 0;
 
-    if (line.contains("|")) {
+    if (line.contains("|") && lines.length > index + 1) {
       let headers = line.split("|");
       let isIndirectTable = headers[0].trim().length !== 0;
 
       let isValidTable = true;
 
       let headerDivider = lines[index + 1].split("|");
+
+      if (headerDivider.length == 0 || !lines[index + 1].contains("|")) {
+        buffer += (buffer.length > 0 ? "\n" : "") + line;
+        index++;
+        continue;
+      }
 
       for (let i = 0; i < headerDivider.length; i++) {
         let trimmed = headerDivider[i].trim();
@@ -800,7 +807,6 @@ type TokenizerState =
   | "HEADING"
   | "ASTERISK"
   | "UNDER_SCORE"
-  | "DIMENSIONS"
   | "HYPHENS"
   | "EXCLAMATION"
   | "BACKTICKS"
@@ -978,6 +984,57 @@ export const tokenizeBlock = (
           break;
         }
         case "BRACKET": {
+          if (char === "[") {
+            let wikiLinkCursor = cursor + 1;
+
+            for (let i = wikiLinkCursor; i < line.length; i++) {
+              if (line[i] === "]" && line[i + 1] === "]") {
+                wikiLinkCursor = i + 1;
+                break;
+              }
+            }
+
+            if (wikiLinkCursor !== cursor + 1) {
+              let alt = line.slice(cursor + 1, wikiLinkCursor - 1);
+              let dimension;
+
+              for (let i = alt.length - 1; i >= 0; i--) {
+                if (alt[i] === "|") {
+                  dimension = dimensionFromString(alt.slice(i + 1));
+                  if (dimension) {
+                    alt = alt.slice(0, i);
+                  }
+                  break;
+                }
+              }
+
+              if (isImage) {
+                tokens.push({
+                  type: "image",
+                  alt,
+                  caption: null,
+                  url: alt,
+                  dimensions: dimension
+                });
+                isImage = false;
+              } else {
+                tokens.push({
+                  type: "url",
+                  text: alt,
+                  url: alt
+                });
+              }
+
+              cursor = wikiLinkCursor;
+              state = "TEXT";
+            } else {
+              buffer += "[";
+              state = "TEXT";
+              cursor--;
+            }
+
+            break;
+          }
           if (char === "^") {
             let footnoteCursor = cursor + 1;
             let hasEnd = false;
@@ -1023,7 +1080,6 @@ export const tokenizeBlock = (
             break;
           }
           let urlCursor = cursor;
-          let toState: "PARENTHESIS" | "DIMENSIONS" = "PARENTHESIS";
 
           for (let i = urlCursor; i < line.length; i++) {
             if (line[i] === "]") {
@@ -1043,22 +1099,26 @@ export const tokenizeBlock = (
             break;
           }
 
-          for (let i = cursor - 1; i < line.length; i++) {
-            if (isImage && line[i] === "|") {
-              toState = "DIMENSIONS";
-              urlCursor = i;
+          let alt = line.slice(cursor, urlCursor);
+          let dimension;
+
+          for (let i = alt.length - 1; i >= 0; i--) {
+            if (alt[i] === "|") {
+              dimension = dimensionFromString(alt.slice(i + 1));
+              if (dimension) {
+                alt = alt.slice(0, i);
+              }
               break;
             }
           }
-
-          let alt = line.slice(cursor, urlCursor);
 
           if (isImage) {
             currentToken = {
               type: "image",
               caption: null,
               alt,
-              url: ""
+              url: "",
+              dimensions: dimension
             };
           } else {
             currentToken = {
@@ -1067,8 +1127,8 @@ export const tokenizeBlock = (
               url: ""
             };
           }
-          state = toState;
-          cursor = toState === "DIMENSIONS" ? urlCursor : urlCursor + 1;
+          state = "PARENTHESIS";
+          cursor = urlCursor + 1;
           break;
         }
         case "EXCLAMATION":
@@ -1080,50 +1140,6 @@ export const tokenizeBlock = (
             state = "TEXT";
             cursor--;
           }
-          break;
-        case "DIMENSIONS":
-          let widthBuffer = "";
-          let heightBuffer = "";
-          let dimensionsCursor = cursor;
-
-          let dimensionState: "WIDTH" | "HEIGHT" = "WIDTH";
-
-          for (let i = cursor; i < line.length; i++) {
-            if (dimensionState === "WIDTH") {
-              if (line[i] === "]") {
-                dimensionsCursor = i;
-                break;
-              }
-
-              if (line[i] === "x") {
-                dimensionState = "HEIGHT";
-                dimensionsCursor = i;
-              } else {
-                widthBuffer += line[i];
-              }
-            } else {
-              if (line[i] === "]") {
-                dimensionsCursor = i;
-                break;
-              }
-              heightBuffer += line[i];
-            }
-          }
-
-          if (currentToken) {
-            let width = Number.parseInt(widthBuffer);
-            let height = Number.parseInt(heightBuffer);
-            let dimensions =
-              (dimensionState === "HEIGHT" &&
-                !isNaN(height) &&
-                !isNaN(width)) ||
-              (dimensionState === "WIDTH" && !isNaN(width))
-                ? { width, height: isNaN(height) ? null : height }
-                : null;
-            (currentToken as ImageToken).dimensions = dimensions;
-          }
-          state = "PARENTHESIS";
-          cursor = dimensionsCursor + 1;
           break;
         case "PARENTHESIS": {
           let urlEndCursor = cursor;
@@ -1172,7 +1188,6 @@ export const tokenizeBlock = (
             switch (currentToken.type) {
               case "image":
                 (currentToken as ImageToken).url = url[0];
-                isImage = false;
                 break;
               case "url":
                 (currentToken as UrlToken).url = url[0];
@@ -1181,6 +1196,7 @@ export const tokenizeBlock = (
 
             if (state === "TEXT") {
               tokens.push(currentToken);
+              isImage = false;
               currentToken = null;
             }
           }
@@ -2005,10 +2021,12 @@ const parseBlock = (
         if (token.dimensions) {
           const { width, height } = token.dimensions;
           image.setAttribute("data-width", width.toString());
-          imageBlock.style.maxWidth = `${width}px`;
+          image.setAttribute("loading", "eager");
+          image.setAttribute("role", "presentation");
+          image.style.maxWidth = `${width}px`;
           if (height) {
             image.setAttribute("data-height", height.toString());
-            imageBlock.style.maxHeight = `${height}px`;
+            image.style.maxHeight = `${height}px`;
           }
         }
 

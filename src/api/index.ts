@@ -95,7 +95,7 @@ export class MediumPublishAPI {
           )
         : createDiv(fileContent);
 
-    const toc: HTMLHeadElement | null = html.querySelector("h1")
+    const toc: HTMLElement | null = html.querySelector("h1")
       ? createTOC(html)
       : null;
 
@@ -114,6 +114,10 @@ export class MediumPublishAPI {
     }
 
     if (this.plugin.settings.createTOC && toc) {
+      html.querySelectorAll("a").forEach((link) => {
+        const href = link.getAttribute("href");
+      });
+
       let index = html.indexOf(heading) + 1;
       let breakCount = 0;
 

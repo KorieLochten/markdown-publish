@@ -3,9 +3,9 @@ import {
   checkChar,
   convertLanguageToValid,
   createImage,
+  createLinkElement,
   createMarkdownTable,
   ensureEveryElementHasStyle,
-  htmlEntities,
   isValidLanguage,
   saveHtmlAsPng
 } from "./utils";
@@ -67,6 +67,7 @@ type Block = (
   | Break
   | HorizontalRule
   | Heading
+  | CodeBlock
   | Footnote
   | List
 ) &
@@ -90,11 +91,16 @@ type Break = {
   type: "break";
 };
 
-type Code = {
-  type: "code";
+type CodeBlock = {
+  type: "codeBlock";
   language: string;
   caption: string;
   not: boolean;
+};
+
+type Code = {
+  type: "code";
+  content: string;
 };
 
 type Table = {
@@ -274,6 +280,17 @@ export const tokenizer = (markdown: string): Block[] => {
       let char = line[i];
       let nextChar = i + 1 < line.length ? line[i + 1] : null;
 
+      if ((char === " " && i === 4) || char === "\t") {
+        flushBuffer();
+        blocks.push({
+          type: "code",
+          lineEnd: index,
+          lineStart: index,
+          content: line.slice(i + 1)
+        });
+        break;
+      }
+
       if (char !== " " && char !== "\t") {
         if (char === "`") {
           let count = 1;
@@ -333,11 +350,9 @@ export const tokenizer = (markdown: string): Block[] => {
               index = lines.length;
             }
 
-            language = language.replace(/[^a-zA-Z0-9-#]/g, "");
-
             blocks.push({
-              type: "code",
-              language,
+              type: "codeBlock",
+              language: language.replace(/[^a-zA-Z0-9-#]/g, ""),
               content,
               caption: caption,
               not: language.charAt(language.length - 1) === "!",
@@ -558,6 +573,8 @@ export const tokenizer = (markdown: string): Block[] => {
                 break;
               }
             }
+
+            break;
           }
         }
 
@@ -767,7 +784,10 @@ type TokenizerState =
   | "BRACKET"
   | "PARENTHESIS";
 
-export const tokenizeBlock = (markdown: string): Token[] => {
+export const tokenizeBlock = (
+  markdown: string,
+  isCode: boolean = false
+): Token[] => {
   const tokens: Token[] = [];
 
   let lines = markdown.split("\n");
@@ -838,44 +858,6 @@ export const tokenizeBlock = (markdown: string): Token[] => {
       switch (state) {
         case "TEXT":
           switch (char) {
-            case " ":
-              if (cursor === 0) {
-                let count = 1;
-                for (let i = cursor + 1; i < line.length; i++) {
-                  if (line[i] === " ") {
-                    count++;
-                  } else {
-                    break;
-                  }
-                }
-
-                if (count >= 4) {
-                  let content = line.slice(cursor);
-                  tokens.push({
-                    type: "code",
-                    content
-                  });
-
-                  cursor = line.length + 1;
-                } else {
-                  buffer += " ";
-                }
-              } else {
-                buffer += " ";
-              }
-              break;
-            case "\t":
-              if (!hasWritten) {
-                let content = line.slice(cursor);
-                tokens.push({
-                  type: "code",
-                  content
-                });
-                cursor = line.length + 1;
-              } else {
-                buffer += "\t";
-              }
-              break;
             case "*":
               flushBuffer();
               state = "ASTERISK";
@@ -892,8 +874,12 @@ export const tokenizeBlock = (markdown: string): Token[] => {
               hasWritten = true;
               break;
             case "`":
-              flushBuffer();
-              state = "BACKTICKS";
+              if (!isCode) {
+                flushBuffer();
+                state = "BACKTICKS";
+              } else {
+                buffer += "`";
+              }
               break;
             case "!":
               flushBuffer();
@@ -1451,7 +1437,7 @@ export const parser = async (
   let footnoteMap: Record<string, string> = {};
   let footnotes: Record<string, HTMLElement> = {};
 
-  for (let block of blocks) {
+  const setId = (block: Block) => {
     if (block.id) {
       const paragraph = document.createElement("p");
       paragraph.setAttribute("name", block.id);
@@ -1459,10 +1445,13 @@ export const parser = async (
       paragraph.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
       container.appendChild(paragraph);
     }
+  };
+
+  for (let block of blocks) {
     switch (block.type) {
       case "content": {
+        setId(block);
         const paragraph = document.createElement("p");
-
         parseBlock(
           tokenizeBlock(block.content),
           app,
@@ -1515,6 +1504,7 @@ export const parser = async (
         break;
       }
       case "list": {
+        setId(block);
         const p = document.createElement("p");
         const list = document.createElement(block.ordered ? "ol" : "ul");
         const item = document.createElement("li");
@@ -1541,6 +1531,7 @@ export const parser = async (
         break;
       }
       case "callout": {
+        setId(block);
         let range = markdownView.editor.getRange(
           {
             line: block.lineStart,
@@ -1602,6 +1593,7 @@ export const parser = async (
         break;
       }
       case "quote": {
+        setId(block);
         const blockquote = document.createElement("blockquote");
         blockquote.className = `graf--${block.quoteType}`;
 
@@ -1617,6 +1609,22 @@ export const parser = async (
         break;
       }
       case "code": {
+        setId(block);
+        const codeBlock = document.createElement("pre");
+        const code = document.createElement("code");
+        codeBlock.appendChild(code);
+        parseBlock(
+          tokenizeBlock(block.content, true),
+          app,
+          appSettings,
+          code,
+          footnoteMap
+        );
+        container.appendChild(codeBlock);
+        break;
+      }
+      case "codeBlock": {
+        setId(block);
         let language = convertLanguageToValid(block.language);
         let isValidLang = isValidLanguage(language);
 
@@ -1733,10 +1741,7 @@ export const parser = async (
 
           if (language.length > 0) {
             code.className = block.language;
-            code.textContent =
-              language === "html" || language === "xml"
-                ? htmlEntities(block.content)
-                : block.content;
+            code.textContent = block.content;
             codeBlock.appendChild(code);
           } else {
             codeBlock.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
@@ -1780,6 +1785,7 @@ export const parser = async (
         break;
       }
       case "table": {
+        setId(block);
         markdownView.editor.setValue(createMarkdownTable(block.body));
         markdownView.editor.refresh();
         await new Promise((resolve) =>
@@ -1942,15 +1948,16 @@ const parseBlock = (
         break;
       }
       case "url":
-        const url = document.createElement("a");
-        url.href = token.url.startsWith("#^")
+        const url = token.url.startsWith("#^")
           ? `#${token.url.slice(2)}`
           : token.url;
-        url.textContent = token.text;
+
+        const link = createLinkElement(url, token.text);
+
         if (elementQueue.length > 0) {
-          elementQueue[elementQueue.length - 1].appendChild(url);
+          elementQueue[elementQueue.length - 1].appendChild(link);
         } else {
-          container.appendChild(url);
+          container.appendChild(link);
         }
         break;
       case "image": {
@@ -1991,7 +1998,7 @@ const parseBlock = (
         const code = document.createElement("code");
         code.setAttribute("data-testid", "editorParagraphText");
         parseBlock(
-          tokenizeBlock(token.content),
+          tokenizeBlock(token.content, true),
           app,
           appSettings,
           code,

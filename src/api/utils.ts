@@ -97,7 +97,8 @@ export const isValidLanguage = (language: string): boolean => {
 
 export const createLinkElement = (href: string, text: string) => {
   const a = document.createElement("a");
-  a.href = href;
+  let isAnchor = href[0] === "#";
+  a.href = isAnchor ? href.replace(/%20| /g, "-") : href;
   a.innerText = text;
   a.target = text.includes("http") ? "_blank" : "_self";
 
@@ -202,15 +203,6 @@ export const createHeader = (text: string): HTMLElement => {
   return header;
 };
 
-export const htmlEntities = (text: string): string => {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-};
-
 export const ensureEveryElementHasStyle = (
   element: HTMLElement,
   style: CSSProperties
@@ -299,6 +291,7 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
 
       const id = `${getId(level)}-${headingId}`;
       child.setAttribute("name", id);
+      child.setAttribute("original-id", headingId);
       child.setAttribute("id", id);
 
       currentLevel = level;
@@ -313,12 +306,15 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
     items.forEach((item, index) => {
       const span = createEl("span");
       span.appendText("\t".repeat(item.level - 1) + `${index + 1}.`);
-      span.appendChild(
-        createLinkElement(
-          "#" + item.element.id,
-          item.element.textContent.trim()
-        )
-      );
+      const url = "#" + item.element.id;
+      const originalId = item.element.getAttribute("original-id");
+
+      const anchors = element.querySelectorAll(`a[href="#${originalId}"]`);
+      anchors.forEach((a) => {
+        a.setAttribute("href", url);
+      });
+
+      span.appendChild(createLinkElement(url, item.element.textContent.trim()));
       span.appendText("\n");
       container.appendChild(span);
 

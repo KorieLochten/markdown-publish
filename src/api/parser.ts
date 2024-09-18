@@ -95,7 +95,8 @@ type CodeBlock = {
   type: "codeBlock";
   language: string;
   caption: string;
-  not: boolean;
+  toPng: boolean;
+  useLightTheme: boolean;
 };
 
 type Code = {
@@ -304,12 +305,28 @@ export const tokenizer = (markdown: string): Block[] => {
           }
 
           if (count >= 3) {
-            const codeBlockTitle = line.slice(i + count - 1).split(" ");
-            let language = codeBlockTitle[0];
-            let caption =
-              codeBlockTitle.length > 0
-                ? codeBlockTitle.slice(1).join(" ")
-                : "";
+            let language = line.slice(i + count);
+            const match = language.match(/[^a-zA-Z0-9#+-]/);
+            let caption;
+            let toPng = false;
+            let useLightTheme = false;
+
+            if (match) {
+              const index = match.index;
+              const char = language.charAt(index);
+              const nextChar = language.charAt(index + 1);
+              if (char === "!" || char === "*") {
+                toPng = char === "!" || nextChar === "!";
+                useLightTheme = char === "*" || nextChar === "*";
+              }
+
+              let count = Number(toPng) + Number(useLightTheme);
+
+              caption = language.slice(index + count);
+
+              language = language.slice(0, index);
+            }
+
             let content = "";
             let hasEnd = false;
             let lineStart = index;
@@ -352,10 +369,11 @@ export const tokenizer = (markdown: string): Block[] => {
 
             blocks.push({
               type: "codeBlock",
-              language: language.replace(/[^a-zA-Z0-9-#]/g, ""),
+              language: language,
               content,
               caption: caption,
-              not: language.charAt(language.length - 1) === "!",
+              toPng,
+              useLightTheme,
               lineStart,
               lineEnd: index
             });
@@ -1627,9 +1645,13 @@ export const parser = async (
         setId(block);
         let language = convertLanguageToValid(block.language);
         let isValidLang = isValidLanguage(language);
+        const shouldConvertToPng = appSettings.convertCodeToPng;
+        const blockRequiresPng = block.toPng;
 
         if (
-          (!isValidLang || (appSettings.convertCodeToPng && !block.not)) &&
+          (!isValidLang ||
+            (!shouldConvertToPng && blockRequiresPng) ||
+            (shouldConvertToPng && !blockRequiresPng)) &&
           language.length > 0
         ) {
           markdownView.editor.setValue(
@@ -1672,8 +1694,16 @@ export const parser = async (
               cmEmbed,
               imageSrc,
               async (doc, element) => {
-                doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
-                doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
+                doc.body.toggleClass(
+                  "theme-dark",
+                  (block.useLightTheme && !appSettings.useDarkTheme) ||
+                    (!block.useLightTheme && appSettings.useDarkTheme)
+                );
+                doc.body.toggleClass(
+                  "theme-light",
+                  (!block.useLightTheme && !appSettings.useDarkTheme) ||
+                    (block.useLightTheme && appSettings.useDarkTheme)
+                );
                 if (element instanceof HTMLElement) {
                   element.style.backgroundColor = "var(--background-primary)";
                   element.style.color = "var(--text-normal)";

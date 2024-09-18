@@ -333,33 +333,41 @@ export const tokenizer = (markdown: string): Block[] => {
 
             for (let i = index + 1; i < lines.length; i++) {
               let isLineEnd = false;
-              if (lines[i].startsWith("`")) {
-                let count = 1;
-
-                for (let j = 1; j < lines[i].length; j++) {
-                  if (lines[i][j] === "`") {
-                    count++;
-                  } else {
-                    break;
-                  }
-                }
-
-                if (count >= 3) {
-                  isLineEnd = true;
-                  for (let j = count; j < lines[i].length; j++) {
-                    if (lines[i][j] !== " " && lines[i][j] !== "\t") {
-                      isLineEnd = false;
+              let line = lines[i];
+              for (let j = 0; j < line.length; j++) {
+                if (line[j] == "`") {
+                  let count = 1;
+                  for (let k = j + 1; k < line.length; k++) {
+                    if (line[k] == "`") {
+                      count++;
+                      j = k;
+                    } else {
                       break;
                     }
                   }
 
-                  if (isLineEnd) {
-                    index = i;
-                    hasEnd = true;
-                    break;
+                  if (count >= 3) {
+                    isLineEnd = true;
+                    for (let k = j + 1; k < line.length; k++) {
+                      if (line[k] !== " " && line[k] !== "\t") {
+                        isLineEnd = false;
+                        break;
+                      }
+                    }
+
+                    if (isLineEnd) {
+                      break;
+                    }
                   }
                 }
               }
+
+              if (isLineEnd) {
+                index = i;
+                hasEnd = true;
+                break;
+              }
+
               content += lines[i] + "\n";
             }
 
@@ -1694,16 +1702,18 @@ export const parser = async (
               cmEmbed,
               imageSrc,
               async (doc, element) => {
-                doc.body.toggleClass(
-                  "theme-dark",
-                  (block.useLightTheme && !appSettings.useDarkTheme) ||
-                    (!block.useLightTheme && appSettings.useDarkTheme)
-                );
-                doc.body.toggleClass(
-                  "theme-light",
-                  (!block.useLightTheme && !appSettings.useDarkTheme) ||
-                    (block.useLightTheme && appSettings.useDarkTheme)
-                );
+                if (doc.body) {
+                  doc.body.toggleClass(
+                    "theme-dark",
+                    (block.useLightTheme && !appSettings.useDarkTheme) ||
+                      (!block.useLightTheme && appSettings.useDarkTheme)
+                  );
+                  doc.body.toggleClass(
+                    "theme-light",
+                    (!block.useLightTheme && !appSettings.useDarkTheme) ||
+                      (block.useLightTheme && appSettings.useDarkTheme)
+                  );
+                }
                 if (element instanceof HTMLElement) {
                   element.style.backgroundColor = "var(--background-primary)";
                   element.style.color = "var(--text-normal)";

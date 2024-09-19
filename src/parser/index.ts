@@ -1516,11 +1516,9 @@ export const parser = async (
         if (validId && idIndex !== -1) {
           let id = block.content.slice(idIndex + 1);
           heading.setAttribute("name", id);
-          heading.setAttribute("id", id);
           block.content = block.content.slice(0, idIndex);
         } else {
           heading.setAttribute("name", block.content);
-          heading.setAttribute("id", block.content);
         }
 
         parseBlock(

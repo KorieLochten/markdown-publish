@@ -261,7 +261,6 @@ type TOCItem = {
 export const createHiddenParagraph = (id: string): HTMLElement => {
   const paragraph = document.createElement("p");
   paragraph.setAttribute("name", id);
-  paragraph.setAttribute("id", id);
   paragraph.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
   return paragraph;
 };
@@ -352,7 +351,6 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
       const originalId = item.element.getAttribute("original-id");
       const id = item.element.getAttribute("toc-id");
       const url = "#" + id;
-      item.element.setAttribute("id", id);
       item.element.setAttribute("name", id);
 
       const anchorsWithHash = element.querySelectorAll(`a[href*="#"]`);

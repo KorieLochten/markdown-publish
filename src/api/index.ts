@@ -125,7 +125,6 @@ export class MediumPublishAPI {
       heading = html.insertBefore(createHeader(fileName), firstChild);
     }
 
-    heading.setAttribute("id", "top");
     heading.setAttribute("name", "top");
 
     if (this.plugin.settings.createTOC && toc) {

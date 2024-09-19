@@ -3,6 +3,7 @@ import { obsidianFetch, RequestParams } from "./fetch";
 import { Notice, TFile } from "obsidian";
 import {
   createHeader,
+  createHiddenParagraph,
   createTOC,
   getImageDimensions,
   parseResponse,
@@ -109,15 +110,25 @@ export class MediumPublishAPI {
       } else {
         heading = html.insertBefore(createHeader(fileName), firstChild);
       }
-    } else {
+    } else if (
+      firstChild instanceof HTMLElement &&
+      firstChild.tagName == "FIGURE"
+    ) {
+      const { firstChild: child } = firstChild;
+
+      if (child instanceof HTMLElement && child.tagName === "P") {
+        firstChild.removeChild(child);
+      }
+
       heading = html.insertAfter(createHeader(fileName), firstChild);
+    } else {
+      heading = html.insertBefore(createHeader(fileName), firstChild);
     }
 
-    if (this.plugin.settings.createTOC && toc) {
-      html.querySelectorAll("a").forEach((link) => {
-        const href = link.getAttribute("href");
-      });
+    heading.setAttribute("id", "top");
+    heading.setAttribute("name", "top");
 
+    if (this.plugin.settings.createTOC && toc) {
       let index = html.indexOf(heading) + 1;
       let breakCount = 0;
 
@@ -148,6 +159,9 @@ export class MediumPublishAPI {
         html.insertBefore(toc, sibling);
         break;
       }
+
+      const paragraph = createHiddenParagraph("toc");
+      html.insertBefore(paragraph, toc);
     }
 
     const content = await this.altHtml(html);
@@ -176,17 +190,50 @@ export class MediumPublishAPI {
     }
   }
 
-  async uploadImage(file: TFile) {
-    const binaryData = await this.plugin.app.vault.readBinary(file);
+  async uploadImage(file: TFile | string, id: number = 0) {
+    let binaryData: ArrayBuffer;
+    let extension: string;
+    if (file instanceof TFile) {
+      extension = file.extension;
+      binaryData = await this.plugin.app.vault.readBinary(file);
+    } else {
+      const response = await fetch(file);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch image: ${response.statusText}`);
+      }
+
+      const url = new URL(response.url);
+      const pathname = url.pathname;
+      const match = pathname.match(/\.(png|jpg|jpeg|gif)$/i);
+      if (match) {
+        extension = match[1];
+      } else {
+        throw new Error(
+          "Invalid image URL: Unable to determine file extension"
+        );
+      }
+
+      binaryData = await response.arrayBuffer();
+    }
     const buffer = Buffer.from(binaryData);
+
+    const idBuffer = Buffer.from(`ID:${id}`);
+    const combinedBuffer = Buffer.concat([buffer, idBuffer]);
 
     const boundary = "----FormBoundaryXYZ";
     const bodyParts: ArrayBuffer[] = [];
 
-    const preamble = `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="image.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`;
-    bodyParts.push(new TextEncoder().encode(preamble).buffer);
+    const mimeTypeMap: { [key: string]: string } = {
+      png: "image/png",
+      jpg: "image/jpeg",
+      jpeg: "image/jpeg",
+      gif: "image/gif"
+    };
+    const mimeType = mimeTypeMap[extension.toLowerCase()];
 
-    bodyParts.push(buffer);
+    const preamble = `--${boundary}\r\nContent-Disposition: form-data; name="image"; filename="image_${id}.${extension}"\r\nContent-Type: ${mimeType}\r\n\r\n`;
+    bodyParts.push(new TextEncoder().encode(preamble).buffer);
+    bodyParts.push(combinedBuffer.buffer);
 
     const epilogue = `\r\n--${boundary}--\r\n`;
     bodyParts.push(new TextEncoder().encode(epilogue).buffer);
@@ -220,28 +267,46 @@ export class MediumPublishAPI {
       div.innerHTML = html;
       html = div;
     }
-    let imageMap: Record<string, string> = {};
+    let imageMap: Record<string, number> = {};
+    let fileMap = new Map<string, TFile>();
+    let dimensionMap: Record<string, string> = {};
 
-    const checkLink = async (link: string): Promise<string> => {
-      if (link in imageMap) {
-        return imageMap[link];
+    const checkLink = async (
+      link: string,
+      width: string = "",
+      height: string = ""
+    ): Promise<string> => {
+      if (dimensionMap[link + width + height]) {
+        return dimensionMap[link + width + height];
       }
 
-      let file = this.plugin.app.metadataCache.getFirstLinkpathDest(
-        link,
-        "assets"
-      );
+      let file: TFile;
+      if (fileMap.has(link)) {
+        file = fileMap.get(link);
+      } else {
+        file = this.plugin.app.metadataCache.getFirstLinkpathDest(link, "");
+        fileMap.set(link, file);
+      }
 
-      if (file) {
-        let extension = file.extension;
-        if (["png", "jpg", "jpeg", "gif"].includes(extension)) {
-          const response = await this.uploadImage(file);
+      if (
+        (file && ["png", "jpg", "jpeg", "gif"].includes(file.extension)) ||
+        !file
+      ) {
+        try {
+          const response = await this.uploadImage(
+            file || link,
+            imageMap[link] || 0
+          );
           if (response) {
-            imageMap[link] = response.data.url;
+            imageMap[link] = imageMap[link] ? imageMap[link] + 1 : 1;
+            dimensionMap[link + width + height] = response.data.url;
             return response.data.url;
           }
+        } catch (error) {
+          console.error(error);
         }
       }
+
       return link;
     };
 
@@ -250,7 +315,10 @@ export class MediumPublishAPI {
     for (const image of images) {
       let src = image.getAttribute("src");
       if (src) {
-        const link = await checkLink(src);
+        const width = image.getAttribute("data-width");
+        const height = image.getAttribute("data-height");
+        const link = await checkLink(src, width || "", height || "");
+
         if (!image.getAttribute("data-width")) {
           const { width, height } = await getImageDimensions(link);
 

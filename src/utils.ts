@@ -177,17 +177,43 @@ export const saveHtmlAsPng = async (
 
 export const createImage = (src: string, alt: string): HTMLElement => {
   const figure = document.createElement("figure");
+  figure.className = "paragraph-image";
   const div = createDiv();
   div.className = "aspectRatioPlaceholder is-locked";
+  const picture = createEl("picture");
+  div.appendChild(picture);
   figure.appendChild(div);
   const img = new Image();
   const caption = document.createElement("figcaption");
   caption.className = "imageCaption";
   img.src = src;
   img.alt = alt;
-  div.appendChild(img);
+  picture.appendChild(img);
   figure.appendChild(caption);
   return figure;
+};
+
+export const separateImages = (element: HTMLElement): HTMLElement[] => {
+  const elements: HTMLElement[] = [];
+  let buffer: HTMLElement = createEl("p");
+  while (element.firstChild) {
+    const child = element.removeChild(element.firstChild);
+    if (child instanceof HTMLElement && child.tagName === "FIGURE") {
+      if (buffer.innerHTML.length > 0) {
+        elements.push(buffer);
+        buffer = createEl("p");
+      }
+      elements.push(child);
+    } else {
+      buffer.appendChild(child);
+    }
+  }
+
+  if (buffer.innerHTML.length > 0) {
+    elements.push(buffer);
+  }
+
+  return elements;
 };
 
 export const getImageDimensions = (
@@ -232,11 +258,20 @@ type TOCItem = {
   children: TOCItem[];
 };
 
+export const createHiddenParagraph = (id: string): HTMLElement => {
+  const paragraph = document.createElement("p");
+  paragraph.setAttribute("name", id);
+  paragraph.setAttribute("id", id);
+  paragraph.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
+  return paragraph;
+};
+
 export const createTOC = (element: HTMLElement): HTMLElement => {
   const tocContainer = createEl("pre");
   const toc = createEl("code");
   toc.innerHTML = `<strong>Table of Contents</strong>\n`;
   tocContainer.setAttribute("data-code-block-mode", "0");
+
   tocContainer.appendChild(toc);
 
   const firstHeader = element.querySelector("h1");
@@ -317,14 +352,16 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
       const originalId = item.element.getAttribute("original-id");
       const id = item.element.getAttribute("toc-id");
       const url = "#" + id;
-      const paragraph = document.createElement("p");
+      item.element.setAttribute("id", id);
+      item.element.setAttribute("name", id);
 
-      paragraph.setAttribute("name", id);
-      paragraph.setAttribute("id", id);
-      paragraph.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
-      element.insertBefore(paragraph, item.element);
-
-      const anchors = element.querySelectorAll(`a[href="#${originalId}"]`);
+      const anchorsWithHash = element.querySelectorAll(`a[href*="#"]`);
+      const anchors = Array.from(anchorsWithHash).filter((a) => {
+        return (
+          a.getAttribute("href").toLowerCase() ===
+          `#${originalId.toLowerCase()}`
+        );
+      });
       anchors.forEach((a) => {
         a.setAttribute("href", url);
       });

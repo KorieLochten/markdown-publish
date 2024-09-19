@@ -2,13 +2,15 @@ import { App, MarkdownView } from "obsidian";
 import {
   checkChar,
   convertLanguageToValid,
+  createHiddenParagraph,
   createImage,
   createLinkElement,
   createMarkdownTable,
   dimensionFromString,
   ensureEveryElementHasStyle,
   isValidLanguage,
-  saveHtmlAsPng
+  saveHtmlAsPng,
+  separateImages
 } from "../utils";
 import { Settings } from "src/settings";
 
@@ -160,7 +162,7 @@ export const tokenizer = (markdown: string): Block[] => {
       }
 
       if (validId && idIndex !== -1) {
-        id = buffer.slice(idIndex + 1);
+        id = buffer.slice(idIndex);
         buffer = buffer.slice(0, idIndex);
       }
 
@@ -602,7 +604,7 @@ export const tokenizer = (markdown: string): Block[] => {
           if (isValidId) {
             for (let j = blocks.length - 1; j >= 0; j--) {
               if (blocks[j].type !== "break") {
-                blocks[j].id = line.slice(1);
+                blocks[j].id = line;
                 break;
               }
             }
@@ -882,8 +884,6 @@ export const tokenizeBlock = (
 
     let line = lines[index];
 
-    let hasWritten = false;
-
     while (cursor < line.length + 1) {
       let char = cursor > line.length ? null : line[cursor];
       let nextChar = cursor + 1 > line.length ? null : line[cursor + 1];
@@ -903,7 +903,6 @@ export const tokenizeBlock = (
                 buffer += nextChar;
                 cursor++;
               }
-              hasWritten = true;
               break;
             case "`":
               if (!isCode) {
@@ -918,14 +917,12 @@ export const tokenizeBlock = (
               state = "EXCLAMATION";
               break;
             case "[":
-              hasWritten = true;
               flushBuffer();
               state = "BRACKET";
               break;
 
             default:
               if (char) {
-                if (char !== " " && char !== "\t") hasWritten = true;
                 buffer += char;
               } else {
                 flushBuffer();
@@ -1293,7 +1290,6 @@ export const tokenizeBlock = (
                     type: "italic"
                   });
                 } else {
-                  hasWritten = true;
                   buffer += target;
                 }
 
@@ -1303,7 +1299,6 @@ export const tokenizeBlock = (
                       type: "bold"
                     });
                   } else {
-                    hasWritten = true;
                     buffer += target.repeat(2);
                   }
                 } else if (hasCharacters) {
@@ -1311,7 +1306,6 @@ export const tokenizeBlock = (
                     type: "bold"
                   });
                 } else {
-                  hasWritten = true;
                   buffer += target.repeat(2);
                 }
               } else {
@@ -1321,7 +1315,6 @@ export const tokenizeBlock = (
                       type: "bold"
                     });
                   } else {
-                    hasWritten = true;
                     buffer += target.repeat(2);
                   }
                 } else if (hasCharacters) {
@@ -1329,7 +1322,6 @@ export const tokenizeBlock = (
                     type: "bold"
                   });
                 } else {
-                  hasWritten = true;
                   buffer += target.repeat(2);
                 }
                 if (hasCharacters) {
@@ -1337,7 +1329,6 @@ export const tokenizeBlock = (
                     type: "italic"
                   });
                 } else {
-                  hasWritten = true;
                   buffer += target;
                 }
               }
@@ -1350,7 +1341,6 @@ export const tokenizeBlock = (
                     type: "bold"
                   });
                 } else {
-                  hasWritten = true;
                   buffer += target.repeat(2);
                 }
               } else if (hasCharacters) {
@@ -1358,7 +1348,6 @@ export const tokenizeBlock = (
                   type: "bold"
                 });
               } else {
-                hasWritten = true;
                 buffer += target.repeat(2);
               }
               break;
@@ -1369,7 +1358,6 @@ export const tokenizeBlock = (
                     type: "italic"
                   });
                 } else {
-                  hasWritten = true;
                   buffer += target;
                 }
               } else if (hasCharacters) {
@@ -1377,7 +1365,6 @@ export const tokenizeBlock = (
                   type: "italic"
                 });
               } else {
-                hasWritten = true;
                 buffer += target;
               }
               break;
@@ -1390,7 +1377,6 @@ export const tokenizeBlock = (
                   type: "bold"
                 });
               } else {
-                hasWritten = true;
                 buffer += target.repeat(2);
               }
               if (foundItalic && hasCharacters) {
@@ -1398,7 +1384,6 @@ export const tokenizeBlock = (
                   type: "italic"
                 });
               } else {
-                hasWritten = true;
                 buffer += target;
               }
               break;
@@ -1408,7 +1393,6 @@ export const tokenizeBlock = (
                   type: "bold"
                 });
               } else {
-                hasWritten = true;
                 buffer += target.repeat(2);
               }
               break;
@@ -1418,7 +1402,6 @@ export const tokenizeBlock = (
                   type: "italic"
                 });
               } else {
-                hasWritten = true;
                 buffer += target;
               }
               break;
@@ -1439,9 +1422,11 @@ export const tokenizeBlock = (
 
     openTokens = [];
 
-    tokens.push({
-      type: "break"
-    });
+    if (index < lines.length - 1) {
+      tokens.push({
+        type: "break"
+      });
+    }
 
     index++;
   }
@@ -1481,19 +1466,15 @@ export const parser = async (
 
   const setId = (block: Block) => {
     if (block.id) {
-      const paragraph = document.createElement("p");
-      paragraph.setAttribute("name", block.id);
-      paragraph.setAttribute("id", block.id);
-      paragraph.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
-      container.appendChild(paragraph);
+      container.appendChild(createHiddenParagraph(block.id));
     }
   };
 
   for (let block of blocks) {
     switch (block.type) {
       case "content": {
-        setId(block);
         const paragraph = document.createElement("p");
+
         parseBlock(
           tokenizeBlock(block.content),
           app,
@@ -1502,8 +1483,15 @@ export const parser = async (
           footnoteMap
         );
 
-        container.appendChild(paragraph);
+        const elements = separateImages(paragraph);
 
+        for (let i = 0; i < elements.length; i++) {
+          const element = elements[i];
+          if (i == 0 && block.id) {
+            element.prepend(createHiddenParagraph(block.id));
+          }
+          container.appendChild(element);
+        }
         break;
       }
       case "heading": {
@@ -2002,11 +1990,7 @@ const parseBlock = (
         break;
       }
       case "url":
-        const url = token.url.startsWith("#^")
-          ? `#${token.url.slice(2)}`
-          : token.url;
-
-        const link = createLinkElement(url, token.text);
+        const link = createLinkElement(token.url, token.text);
 
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendChild(link);
@@ -2021,8 +2005,6 @@ const parseBlock = (
         if (token.dimensions) {
           const { width, height } = token.dimensions;
           image.setAttribute("data-width", width.toString());
-          image.setAttribute("loading", "eager");
-          image.setAttribute("role", "presentation");
           image.style.maxWidth = `${width}px`;
           if (height) {
             image.setAttribute("data-height", height.toString());

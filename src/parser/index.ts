@@ -25,8 +25,8 @@ type ImageToken = {
   };
 };
 
-type UrlToken = {
-  type: "url";
+type LinkToken = {
+  type: "link";
   url: string;
   text: string;
 };
@@ -796,7 +796,7 @@ export const tokenizer = (markdown: string): Block[] => {
 
 type Token =
   | ImageToken
-  | UrlToken
+  | LinkToken
   | BoldToken
   | ItalicToken
   | TextToken
@@ -1016,7 +1016,7 @@ export const tokenizeBlock = (
                 isImage = false;
               } else {
                 tokens.push({
-                  type: "url",
+                  type: "link",
                   text: alt,
                   url: alt
                 });
@@ -1119,7 +1119,7 @@ export const tokenizeBlock = (
             };
           } else {
             currentToken = {
-              type: "url",
+              type: "link",
               text: alt,
               url: ""
             };
@@ -1152,7 +1152,7 @@ export const tokenizeBlock = (
           if (urlEndCursor === cursor && line[urlEndCursor] !== ")") {
             buffer += `[${
               (currentToken as ImageToken).alt ||
-              (currentToken as UrlToken).text
+              (currentToken as LinkToken).text
             }](`;
             cursor--;
             break;
@@ -1186,8 +1186,8 @@ export const tokenizeBlock = (
               case "image":
                 (currentToken as ImageToken).url = url[0];
                 break;
-              case "url":
-                (currentToken as UrlToken).url = url[0];
+              case "link":
+                (currentToken as LinkToken).url = url[0];
                 break;
             }
 
@@ -1987,7 +1987,7 @@ const parseBlock = (
         elementQueue.push(italic);
         break;
       }
-      case "url":
+      case "link":
         const link = createLinkElement(token.url, token.text);
 
         if (elementQueue.length > 0) {

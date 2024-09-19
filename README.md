@@ -4,10 +4,10 @@ This is a plugin for Obsidian.md that allows you to publish your notes to Medium
 
 ## Features
 
-- Publish notes to Medium(duh)
+- Publish notes to Medium
 - Easily generate your code snippets to images so they look good on Medium
 - Uploads local images using the Medium API
-- Have your Mermaid diagrams converted to images or any generate `code block`.
+- Have your Mermaid diagrams converted to images or any generated `code block`.
 - Automatic table of contents generation
 - Footnotes support
 - Internal links support + [links to blocks](https://help.obsidian.md/Linking+notes+and+files/Internal+links#Link+to+a+block+in+a+note)

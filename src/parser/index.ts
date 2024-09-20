@@ -61,20 +61,10 @@ type BlockBase = {
   id?: string;
 };
 
-type Block = (
-  | Code
-  | Table
-  | Content
-  | Callout
-  | Quote
-  | Break
-  | HorizontalRule
-  | Heading
-  | CodeBlock
-  | Footnote
-  | List
-) &
-  BlockBase;
+type Math = {
+  type: "math";
+  content: string;
+};
 
 type List = {
   type: "list";
@@ -131,12 +121,29 @@ type Footnote = {
   id: string;
 };
 
+type Block = (
+  | Code
+  | Math
+  | Table
+  | Content
+  | Callout
+  | Quote
+  | Break
+  | HorizontalRule
+  | Heading
+  | CodeBlock
+  | Footnote
+  | List
+) &
+  BlockBase;
+
 export const tokenizer = (markdown: string): Block[] => {
   const blocks: Block[] = [];
 
   let buffer = "";
 
   let index = 0;
+  let lastLine = 0;
 
   let lines = markdown.split("\n");
 
@@ -168,13 +175,14 @@ export const tokenizer = (markdown: string): Block[] => {
 
       blocks.push({
         type: "content",
-        lineStart: index,
+        lineStart: lastLine,
         lineEnd: index,
         content: buffer,
         id
       });
       buffer = "";
     }
+    lastLine = index;
   };
 
   while (index < lines.length) {
@@ -397,6 +405,7 @@ export const tokenizer = (markdown: string): Block[] => {
             break;
           }
         }
+
         if (char === "#" && i === 0) {
           let level = 1;
           for (let j = 1; j < line.length; j++) {
@@ -781,7 +790,78 @@ export const tokenizer = (markdown: string): Block[] => {
           }
         }
 
-        buffer += (buffer.length > 0 ? "\n" : "") + line;
+        let isMath = false;
+
+        let mathIndex = index;
+
+        let mathBuffer = line.slice(0, i);
+        for (
+          let j = i;
+          j < (mathIndex < lines.length ? lines[mathIndex].length : 0);
+          j++
+        ) {
+          let line = lines[mathIndex];
+          if (line[j] === "$" && line[j + 1] === "$") {
+            isMath = true;
+            let hasEnd = false;
+            let mathCursor = j + 1;
+            let content = "";
+
+            buffer += (buffer.length > 0 ? "\n" : "") + mathBuffer;
+            flushBuffer();
+            mathBuffer = "";
+
+            for (let k = mathIndex; k < lines.length; k++) {
+              let line = lines[k];
+              let origin = k == mathIndex ? mathCursor + 1 : 0;
+              for (
+                let l = mathIndex == k ? mathCursor + 1 : 0;
+                l < line.length;
+                l++
+              ) {
+                if (line[l] === "$" && line[l + 1] === "$") {
+                  mathCursor = l;
+                  hasEnd = true;
+                  break;
+                }
+              }
+
+              content +=
+                (content.length > 0 ? "\n" : "") +
+                line.slice(origin, hasEnd ? mathCursor : line.length);
+
+              if (hasEnd) {
+                mathIndex = k;
+                break;
+              }
+            }
+
+            blocks.push({
+              type: "math",
+              content,
+              lineStart: index,
+              lineEnd: mathIndex
+            });
+
+            if (!hasEnd) {
+              mathIndex = lines.length;
+              mathCursor = line.length;
+            }
+
+            j = mathCursor + 1;
+          } else {
+            mathBuffer += line[j];
+          }
+        }
+
+        if (mathBuffer.length > 0) {
+          buffer += (buffer.length > 0 ? "\n" : "") + mathBuffer;
+        }
+
+        if (isMath) {
+          index = mathIndex;
+          break;
+        }
 
         break;
       }
@@ -1616,8 +1696,6 @@ export const parser = async (
             console.error(e);
           }
         }
-
-        markdownView.editor.setValue(currentValue);
         break;
       }
       case "quote": {
@@ -1767,8 +1845,6 @@ export const parser = async (
           } catch (e) {
             console.error(e);
           }
-
-          markdownView.editor.setValue(currentValue);
         } else {
           const codeBlock = document.createElement("pre");
           const code = document.createElement("span");
@@ -1824,6 +1900,54 @@ export const parser = async (
         footnotes[display] = footnote;
         break;
       }
+      case "math": {
+        markdownView.editor.setValue(`$$\n${block.content}\n$$`);
+        markdownView.editor.refresh();
+        await new Promise((resolve) =>
+          setTimeout(resolve, appSettings.loadTime)
+        );
+
+        let cmEmbed = currentDocument.querySelector(
+          ".cm-embed-block"
+        ) as HTMLElement;
+
+        const imageSrc = `math-widget-${block.lineStart}-${block.lineEnd}.png`;
+
+        if (cmEmbed) {
+          try {
+            const { width, height } = await saveHtmlAsPng(
+              appSettings.assetDirectory,
+              app,
+              cmEmbed,
+              imageSrc,
+              async (doc, element) => {
+                doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
+                doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
+
+                if (element instanceof HTMLElement) {
+                  element.style.backgroundColor = "var(--background-primary)";
+                  ensureEveryElementHasStyle(element, {
+                    color: "var(--text-normal)"
+                  });
+                }
+              }
+            );
+
+            const imageBlock = createImage(imageSrc, "Code Block Widget");
+            const image = imageBlock.querySelector("img") as HTMLImageElement;
+
+            image.setAttribute("data-width", width.toString());
+            image.setAttribute("data-height", height.toString());
+            imageBlock.style.maxWidth = `${width}px`;
+            imageBlock.style.maxHeight = `${height}px`;
+
+            container.appendChild(imageBlock);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        break;
+      }
       case "table": {
         setId(block);
         markdownView.editor.setValue(createMarkdownTable(block.body));
@@ -1871,8 +1995,6 @@ export const parser = async (
             console.error(e);
           }
         }
-
-        markdownView.editor.setValue(currentValue);
         break;
       }
       case "footnote": {
@@ -1906,6 +2028,10 @@ export const parser = async (
         footnotes[display] = footnote;
         break;
       }
+    }
+    if (markdownView.editor.getValue() !== currentValue) {
+      markdownView.editor.setValue(currentValue);
+      markdownView.editor.refresh();
     }
   }
 

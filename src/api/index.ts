@@ -96,10 +96,6 @@ export class MediumPublishAPI {
           )
         : createDiv(fileContent);
 
-    const toc: HTMLElement | null = html.querySelector("h1")
-      ? createTOC(html)
-      : null;
-
     let firstChild = html.firstChild;
     let heading: HTMLElement;
     let firstChildIsBreak = false;
@@ -150,6 +146,10 @@ export class MediumPublishAPI {
 
     heading.setAttribute("name", "top");
 
+    const toc: HTMLElement | null = html.querySelector("h1")
+      ? createTOC(html, heading)
+      : null;
+
     if (this.plugin.settings.createTOC && toc) {
       let index = html.indexOf(heading) + 1;
       let breakCount = 0;
@@ -181,9 +181,6 @@ export class MediumPublishAPI {
         html.insertBefore(toc, sibling);
         break;
       }
-
-      const paragraph = createHiddenParagraph("toc");
-      html.insertBefore(paragraph, toc);
     }
 
     const content = await this.altHtml(html);

@@ -274,7 +274,10 @@ export const createHiddenParagraph = (id?: string): HTMLElement => {
   return paragraph;
 };
 
-export const createTOC = (element: HTMLElement): HTMLElement => {
+export const createTOC = (
+  element: HTMLElement,
+  excluded?: HTMLElement
+): HTMLElement | null => {
   const tocContainer = createEl("pre");
   const toc = createEl("code");
   toc.innerHTML = `<strong>Table of Contents</strong>\n`;
@@ -310,6 +313,9 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
   for (let i = index; i < element.children.length; i++) {
     const child = element.children[i];
     if (child instanceof HTMLHeadingElement) {
+      if (excluded && child === excluded) {
+        continue;
+      }
       const headingContent = child.textContent.trim();
       const headingId = headingContent.replaceAll(" ", "-");
       const level = parseInt(child.tagName[1]);
@@ -350,6 +356,10 @@ export const createTOC = (element: HTMLElement): HTMLElement => {
 
   if (stack.length > 0) {
     headings.push(stack[0]);
+  }
+
+  if (headings.length === 0) {
+    return null;
   }
 
   const renderTOC = (items: TOCItem[], container: HTMLElement) => {

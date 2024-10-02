@@ -83,6 +83,7 @@ type HorizontalRule = {
 
 type Break = {
   type: "break";
+  count: number;
 };
 
 type CodeBlock = {
@@ -214,14 +215,14 @@ export const tokenizer = (markdown: string): Block[] => {
         }
       }
 
-      for (let i = 1; i < count; i++) {
-        blocks.push({
-          type: "break",
-          lineStart: index,
-          lineEnd: index,
-          content: ""
-        });
-      }
+      blocks.push({
+        type: "break",
+        lineStart: index,
+        lineEnd: index,
+        content: "",
+        count
+      });
+
       index = breakIndex + 1;
 
       continue;
@@ -1542,7 +1543,8 @@ export const tokenizeBlock = (
 
     if (index < lines.length - 1) {
       tokens.push({
-        type: "break"
+        type: "break",
+        count: 1
       });
     }
 
@@ -2075,9 +2077,15 @@ export const parser = async (
         break;
       }
       case "break": {
-        const p = createHiddenParagraph();
-        p.className = "obsidian-break";
-        container.appendChild(p);
+        for (let i = 1; i <= block.count; i++) {
+          if (i % 2 === 0) {
+            const p = createHiddenParagraph();
+            p.className = "obsidian-break";
+            container.appendChild(p);
+          } else {
+            container.appendChild(document.createElement("span"));
+          }
+        }
         break;
       }
     }

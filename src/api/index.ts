@@ -102,22 +102,45 @@ export class MediumPublishAPI {
 
     let firstChild = html.firstChild;
     let heading: HTMLElement;
+    let firstChildIsBreak = false;
+    if (
+      firstChild instanceof HTMLElement &&
+      firstChild.className === "link-block"
+    ) {
+      firstChildIsBreak = true;
+      firstChild = html.children[1];
+    }
 
     if (firstChild instanceof HTMLHeadingElement) {
       let level = parseInt(firstChild.tagName[1]);
       if (level === 1) {
         heading = firstChild;
-      } else {
+      } else if (level < 5) {
+        if (firstChildIsBreak && html.firstChild instanceof HTMLElement) {
+          html
+            .querySelectorAll(
+              `a[href="#${html.firstChild.getAttribute("name")}"]`
+            )
+            .forEach((element: HTMLAnchorElement) => {
+              element.href = `#top`;
+            });
+          html.removeChild(html.firstChild);
+        }
         heading = html.insertBefore(createHeader(fileName), firstChild);
       }
     } else if (
       firstChild instanceof HTMLElement &&
       firstChild.tagName == "FIGURE"
     ) {
-      const { firstChild: child } = firstChild;
-
-      if (child instanceof HTMLElement && child.tagName === "P") {
-        firstChild.removeChild(child);
+      if (firstChildIsBreak && html.firstChild instanceof HTMLElement) {
+        html
+          .querySelectorAll(
+            `a[href="#${html.firstChild.getAttribute("name")}"]`
+          )
+          .forEach((element: HTMLAnchorElement) => {
+            element.href = `#top`;
+          });
+        html.removeChild(html.firstChild);
       }
 
       heading = html.insertAfter(createHeader(fileName), firstChild);

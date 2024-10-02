@@ -202,13 +202,28 @@ export const tokenizer = (markdown: string): Block[] => {
 
     if (line.trim().length === 0) {
       flushBuffer();
-      blocks.push({
-        type: "break",
-        lineStart: index,
-        lineEnd: index,
-        content: ""
-      });
-      index++;
+      let count = 1;
+      let breakIndex = index;
+
+      for (let i = index + 1; i < lines.length; i++) {
+        if (lines[i].trim().length === 0) {
+          count++;
+          breakIndex = i;
+        } else {
+          break;
+        }
+      }
+
+      for (let i = 1; i < count; i++) {
+        blocks.push({
+          type: "break",
+          lineStart: index,
+          lineEnd: index,
+          content: ""
+        });
+      }
+      index = breakIndex + 1;
+
       continue;
     }
 
@@ -633,7 +648,7 @@ export const tokenizer = (markdown: string): Block[] => {
           if (isValidId) {
             for (let j = blocks.length - 1; j >= 0; j--) {
               if (blocks[j].type !== "break") {
-                blocks[j].id = line;
+                blocks[j].id = line.slice(1);
                 break;
               }
             }
@@ -893,8 +908,6 @@ export const tokenizer = (markdown: string): Block[] => {
 
   flushBuffer();
 
-  console.log("BLOCKS", blocks);
-
   return blocks;
 };
 
@@ -926,7 +939,6 @@ export const tokenizeBlock = (
   markdown: string,
   isCode: boolean = false
 ): Token[] => {
-  console.log(markdown);
   const tokens: Token[] = [];
 
   let lines = markdown.split("\n");
@@ -1578,9 +1590,12 @@ export const parser = async (
         child instanceof HTMLElement &&
         child.className === "obsidian-break"
       ) {
+        child.className = "link-block";
         child.setAttribute("name", block.id);
       } else {
-        container.appendChild(createHiddenParagraph(block.id));
+        const paragraph = createHiddenParagraph(block.id);
+        paragraph.className = "link-block";
+        container.appendChild(paragraph);
       }
     }
   };
@@ -1600,18 +1615,10 @@ export const parser = async (
 
         const elements = separateImages(paragraph);
 
+        setId(block);
+
         for (let i = 0; i < elements.length; i++) {
           const element = elements[i];
-          if (i == 0 && block.id) {
-            if (
-              element instanceof HTMLElement &&
-              element.tagName === "FIGURE"
-            ) {
-              element.prepend(createHiddenParagraph(block.id));
-            } else {
-              setId(block);
-            }
-          }
           container.appendChild(element);
         }
         break;
@@ -1939,6 +1946,7 @@ export const parser = async (
         break;
       }
       case "math": {
+        setId(block);
         markdownView.editor.setValue(`$$\n${block.content}\n$$`);
         markdownView.editor.refresh();
         await new Promise((resolve) =>
@@ -2086,7 +2094,6 @@ export const parser = async (
     }
   }
 
-  console.log(container.cloneNode(true));
   return container;
 };
 
@@ -2097,7 +2104,6 @@ const parseBlock = (
   container: HTMLElement,
   footnoteMap: Record<string, string>
 ): HTMLElement => {
-  console.log(tokens);
   let elementQueue: HTMLElement[] = [];
 
   const popElement = (tagName: string): boolean => {

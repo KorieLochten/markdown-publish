@@ -1,3 +1,4 @@
+// YukiYokaii
 import { App, MarkdownView } from "obsidian";
 import {
   checkChar,
@@ -149,40 +150,51 @@ export const tokenizer = (markdown: string): Block[] => {
 
   const flushBuffer = () => {
     if (buffer.length > 0) {
-      let validId = false;
-      let idIndex = -1;
-      let id: string | null = null;
-      for (let i = buffer.length - 1; i >= 0; i--) {
-        if (
-          checkChar(
-            { isLetter: true, isNumber: true, isUnique: "-" },
-            buffer[i]
-          )
-        ) {
-          validId = true;
-          continue;
-        } else if (buffer[i] === "^") {
-          idIndex = i;
-          break;
-        }
-        break;
-      }
-
-      if (validId && idIndex !== -1) {
-        id = buffer.slice(idIndex);
-        buffer = buffer.slice(0, idIndex);
-      }
+      let { content, id } = getId(buffer);
 
       blocks.push({
         type: "content",
         lineStart: lastLine,
         lineEnd: index,
-        content: buffer,
+        content,
         id
       });
       buffer = "";
     }
     lastLine = index;
+  };
+
+  const getId = (
+    content: string
+  ): {
+    content: string;
+    id: string | null;
+  } => {
+    let validId = false;
+    let idIndex = -1;
+    let id: string | null = null;
+    for (let i = content.length - 1; i >= 0; i--) {
+      if (
+        checkChar({ isLetter: true, isNumber: true, isUnique: "-" }, content[i])
+      ) {
+        validId = true;
+        continue;
+      } else if (content[i] === "^") {
+        idIndex = i;
+        break;
+      }
+      break;
+    }
+
+    if (validId && idIndex !== -1) {
+      id = content.slice(idIndex + 1);
+      content = content.slice(0, idIndex);
+    }
+
+    return {
+      content,
+      id
+    };
   };
 
   while (index < lines.length) {
@@ -468,12 +480,16 @@ export const tokenizer = (markdown: string): Block[] => {
             }
 
             flushBuffer();
+
+            let { content, id } = getId(line.slice(i + 2));
+
             blocks.push({
               type: "list",
               ordered: false,
               lineStart: index,
               lineEnd: index,
-              content: line.slice(i + 2)
+              content,
+              id
             });
             break;
           } else {
@@ -513,12 +529,14 @@ export const tokenizer = (markdown: string): Block[] => {
 
         if (char === "+" && nextChar === " ") {
           flushBuffer();
+          let { content, id } = getId(line.slice(i + 2));
           blocks.push({
             type: "list",
             ordered: true,
             lineStart: index,
             lineEnd: index,
-            content: line.slice(i + 2)
+            content,
+            id
           });
         }
         if (char >= "1" && char <= "9") {
@@ -534,12 +552,14 @@ export const tokenizer = (markdown: string): Block[] => {
 
           if (line[i + count] === "." && line[i + count + 1] === " ") {
             flushBuffer();
+            let { content, id } = getId(line.slice(i + count + 2));
             blocks.push({
               type: "list",
               ordered: true,
               lineStart: index,
               lineEnd: index,
-              content: line.slice(i + count + 2)
+              content,
+              id
             });
             break;
           }
@@ -647,12 +667,14 @@ export const tokenizer = (markdown: string): Block[] => {
               });
             } else {
               flushBuffer();
+              let { content, id } = getId(line.slice(i + 2));
               blocks.push({
                 type: "list",
                 ordered: false,
                 lineStart: index,
                 lineEnd: index,
-                content: line.slice(i + 2)
+                content,
+                id
               });
             }
             break;
@@ -871,6 +893,8 @@ export const tokenizer = (markdown: string): Block[] => {
 
   flushBuffer();
 
+  console.log("BLOCKS", blocks);
+
   return blocks;
 };
 
@@ -902,6 +926,7 @@ export const tokenizeBlock = (
   markdown: string,
   isCode: boolean = false
 ): Token[] => {
+  console.log(markdown);
   const tokens: Token[] = [];
 
   let lines = markdown.split("\n");
@@ -1095,9 +1120,10 @@ export const tokenizeBlock = (
                 });
                 isImage = false;
               } else {
+                alt = alt.replace(/\^/g, "");
                 tokens.push({
                   type: "link",
-                  text: alt,
+                  text: alt.replace(/\^/g, ""),
                   url: alt
                 });
               }
@@ -1200,7 +1226,7 @@ export const tokenizeBlock = (
           } else {
             currentToken = {
               type: "link",
-              text: alt,
+              text: alt.replace(/\^/g, ""),
               url: ""
             };
           }
@@ -1545,8 +1571,17 @@ export const parser = async (
   let footnotes: Record<string, HTMLElement> = {};
 
   const setId = (block: Block) => {
+    const { lastChild: child } = container;
+
     if (block.id) {
-      container.appendChild(createHiddenParagraph(block.id));
+      if (
+        child instanceof HTMLElement &&
+        child.className === "obsidian-break"
+      ) {
+        child.setAttribute("name", block.id);
+      } else {
+        container.appendChild(createHiddenParagraph(block.id));
+      }
     }
   };
 
@@ -1568,7 +1603,14 @@ export const parser = async (
         for (let i = 0; i < elements.length; i++) {
           const element = elements[i];
           if (i == 0 && block.id) {
-            element.prepend(createHiddenParagraph(block.id));
+            if (
+              element instanceof HTMLElement &&
+              element.tagName === "FIGURE"
+            ) {
+              element.prepend(createHiddenParagraph(block.id));
+            } else {
+              setId(block);
+            }
           }
           container.appendChild(element);
         }
@@ -1632,10 +1674,6 @@ export const parser = async (
       }
       case "horizontalRule": {
         container.appendChild(document.createElement("hr"));
-        break;
-      }
-      case "break": {
-        container.appendChild(document.createElement("br"));
         break;
       }
       case "callout": {
@@ -2028,6 +2066,12 @@ export const parser = async (
         footnotes[display] = footnote;
         break;
       }
+      case "break": {
+        const p = createHiddenParagraph();
+        p.className = "obsidian-break";
+        container.appendChild(p);
+        break;
+      }
     }
     if (markdownView.editor.getValue() !== currentValue) {
       markdownView.editor.setValue(currentValue);
@@ -2042,6 +2086,7 @@ export const parser = async (
     }
   }
 
+  console.log(container.cloneNode(true));
   return container;
 };
 
@@ -2052,6 +2097,7 @@ const parseBlock = (
   container: HTMLElement,
   footnoteMap: Record<string, string>
 ): HTMLElement => {
+  console.log(tokens);
   let elementQueue: HTMLElement[] = [];
 
   const popElement = (tagName: string): boolean => {

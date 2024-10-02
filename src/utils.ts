@@ -258,10 +258,19 @@ type TOCItem = {
   children: TOCItem[];
 };
 
-export const createHiddenParagraph = (id: string): HTMLElement => {
+export const createHiddenSpan = (): HTMLElement => {
+  const span = document.createElement("span");
+  span.innerHTML = "&#8203;";
+  return span;
+};
+
+export const createHiddenParagraph = (id?: string): HTMLElement => {
   const paragraph = document.createElement("p");
-  paragraph.setAttribute("name", id);
-  paragraph.innerHTML = `<span style="visibility: hidden;">&#8203;</span>`;
+  const span = createHiddenSpan();
+  if (id) {
+    paragraph.setAttribute("name", id);
+  }
+  paragraph.appendChild(span);
   return paragraph;
 };
 

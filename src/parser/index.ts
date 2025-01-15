@@ -2082,8 +2082,6 @@ export const parser = async (
             const p = createHiddenParagraph();
             p.className = "obsidian-break";
             container.appendChild(p);
-          } else {
-            container.appendChild(document.createElement("span"));
           }
         }
         break;

@@ -150,10 +150,8 @@ export class MediumPublishAPI {
       ? createTOC(html, heading)
       : null;
 
+    let index = html.indexOf(heading) + 1;
     if (this.plugin.settings.createTOC && toc) {
-      let index = html.indexOf(heading) + 1;
-      let breakCount = 0;
-
       while (true) {
         let sibling = html.children[index];
 
@@ -161,29 +159,35 @@ export class MediumPublishAPI {
           let level = parseInt(sibling.tagName[1]);
           if (level === 1) {
             html.insertBefore(toc, sibling);
-            break;
           } else {
             html.insertAfter(toc, sibling);
           }
           break;
         }
 
-        if (
-          sibling instanceof HTMLElement &&
-          sibling.tagName === "BR" &&
-          breakCount < 2
-        ) {
-          breakCount++;
-          index++;
-          continue;
-        }
-
         html.insertBefore(toc, sibling);
+        break;
+      }
+
+      index = html.indexOf(toc) + 1;
+    }
+
+    while (this.plugin.settings.ignoreBeginningNewlines) {
+      let sibling = html.children[index];
+
+      console.log(sibling);
+
+      if (sibling.className === "obsidian-break") {
+        html.removeChild(sibling);
+      } else {
         break;
       }
     }
 
     const content = await this.altHtml(html);
+    const div = document.createElement("div");
+    div.innerHTML = content;
+    console.log(div);
 
     const request: RequestParams = {
       url: body.publicationId

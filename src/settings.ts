@@ -18,6 +18,7 @@ export type Settings = {
   useDarkTheme: boolean;
   loadTime: number;
   useCodeBlockLanguageForCaption: boolean;
+  ignoreBeginningNewlines: boolean;
 } & MeData;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -32,7 +33,8 @@ export const DEFAULT_SETTINGS: Settings = {
   convertCodeToPng: false,
   createTOC: true,
   useCodeBlockLanguageForCaption: false,
-  useDarkTheme: false
+  useDarkTheme: false,
+  ignoreBeginningNewlines: true
 };
 
 export class MediumPublishSettingTab extends PluginSettingTab {
@@ -76,6 +78,17 @@ export class MediumPublishSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.useDarkTheme);
         toggle.onChange(async (value) => {
           this.plugin.settings.useDarkTheme = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Ignore Beginning Newlines")
+      .setDesc("Ignore the newlines between the title and the content")
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.ignoreBeginningNewlines);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.ignoreBeginningNewlines = value;
           await this.plugin.saveSettings();
         });
       });

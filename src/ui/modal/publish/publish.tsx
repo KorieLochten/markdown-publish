@@ -176,7 +176,7 @@ export const PublishModal = () => {
       <div className={styles["publish-end-container"]}>
         <div>
           {url ? (
-            <a href={url}>{url}</a>
+            <a href={url}>{url.replace("https://medium.com/", "")}</a>
           ) : error ? (
             error
           ) : loading ? (

@@ -175,8 +175,6 @@ export class MediumPublishAPI {
     while (this.plugin.settings.ignoreBeginningNewlines) {
       let sibling = html.children[index];
 
-      console.log(sibling);
-
       if (sibling.className === "obsidian-break") {
         html.removeChild(sibling);
       } else {
@@ -187,7 +185,6 @@ export class MediumPublishAPI {
     const content = await this.altHtml(html);
     const div = document.createElement("div");
     div.innerHTML = content;
-    console.log(div);
 
     const request: RequestParams = {
       url: body.publicationId
@@ -205,11 +202,8 @@ export class MediumPublishAPI {
     const response = await obsidianFetch(request);
 
     if (response.status === 201) {
-      new Notice("Post published successfully");
       const body = parseResponse<PublishResponse>(response.body);
       return body;
-    } else {
-      new Notice("Error: " + response.body);
     }
   }
 

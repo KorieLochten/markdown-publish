@@ -176,7 +176,7 @@ export const PublishModal = () => {
       <div className={styles["publish-end-container"]}>
         <div>
           {url ? (
-            <input defaultValue={url} readOnly />
+            <a href={url}>{url}</a>
           ) : error ? (
             error
           ) : loading ? (

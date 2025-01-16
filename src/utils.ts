@@ -119,10 +119,12 @@ export const saveHtmlAsPng = async (
   app: App,
   element: HTMLElement,
   fileName: string,
+  targetWidth: number | null,
+  scale: number,
+  smoothing: boolean,
   onclone?: (doc: Document, element: Element) => void
 ): Promise<{ width: number; height: number } | null> => {
   try {
-    const scale = 4;
     const canvas = await html2canvas(element, {
       scale,
       useCORS: true,
@@ -134,7 +136,7 @@ export const saveHtmlAsPng = async (
     const originalWidth = canvas.width;
     const originalHeight = canvas.height;
 
-    const targetWidth = 2560;
+    if (targetWidth === null) targetWidth = originalWidth;
     const ratio = targetWidth / originalWidth;
     const targetHeight = originalHeight * ratio;
 
@@ -145,6 +147,10 @@ export const saveHtmlAsPng = async (
     const context = resizedCanvas.getContext("2d");
 
     if (context) {
+      if (smoothing) {
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+      }
       context.drawImage(canvas, 0, 0, targetWidth, targetHeight);
     }
 

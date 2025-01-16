@@ -1717,13 +1717,16 @@ export const parser = async (
               app,
               cmCallout,
               imageSrc,
+              appSettings.customWidth ? appSettings.targetWidth : null,
+              appSettings.imageScale,
+              appSettings.smoothing,
               async (doc, element) => {
                 doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
                 doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
                 if (element instanceof HTMLElement) {
                   element.style.backgroundColor = "var(--background-primary)";
                   ensureEveryElementHasStyle(element, {
-                    fontFamily: "Arial, sans-serif"
+                    fontFamily: appSettings.generalFontFamily
                   });
                 }
               }
@@ -1828,6 +1831,9 @@ export const parser = async (
               app,
               cmEmbed,
               imageSrc,
+              appSettings.customWidth ? appSettings.targetWidth : null,
+              appSettings.imageScale,
+              appSettings.smoothing,
               async (doc, element) => {
                 doc.body.toggleClass(
                   "theme-dark",
@@ -1843,14 +1849,14 @@ export const parser = async (
                   element.style.backgroundColor = "var(--background-primary)";
                   element.style.color = "var(--text-normal)";
                   ensureEveryElementHasStyle(element, {
-                    fontFamily: "Arial, sans-serif"
+                    fontFamily: appSettings.generalFontFamily
                   });
 
                   const hmds = element.querySelectorAll(".cm-hmd-codeblock");
                   const flair = element.querySelector(".code-block-flair");
                   for (const hmd of hmds) {
                     if (hmd instanceof HTMLElement) {
-                      hmd.style.fontFamily = "Roboto Mono, monospace";
+                      hmd.style.fontFamily = appSettings.codeFontFamily;
                       hmd.style.fontWeight = "600";
                     }
                   }
@@ -1968,6 +1974,9 @@ export const parser = async (
               app,
               cmEmbed,
               imageSrc,
+              appSettings.customWidth ? appSettings.targetWidth : null,
+              appSettings.imageScale,
+              appSettings.smoothing,
               async (doc, element) => {
                 doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
                 doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
@@ -2018,13 +2027,16 @@ export const parser = async (
               app,
               cmEmbed,
               imageSrc,
+              appSettings.customWidth ? appSettings.targetWidth : null,
+              appSettings.imageScale,
+              appSettings.smoothing,
               (doc, element) => {
                 doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
                 doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
                 if (element instanceof HTMLElement) {
                   element.style.backgroundColor = "var(--background-primary)";
                   ensureEveryElementHasStyle(element, {
-                    fontFamily: "Arial, sans-serif"
+                    fontFamily: appSettings.generalFontFamily
                   });
                 }
               }

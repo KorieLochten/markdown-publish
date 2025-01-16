@@ -10,6 +10,31 @@ import { createReactModal } from "./ui/modal";
 import type MediumPublishPlugin from "./main";
 import styles from "./setting.module.css";
 
+type CodeFontFamily =
+  | "monospace"
+  | "Courier New"
+  | "Consolas"
+  | "Lucida Console"
+  | "Source Code Pro"
+  | "Fira Code"
+  | "Roboto Mono"
+  | "Inconsolata";
+type GeneralFontFamily =
+  | "sans-serif"
+  | "Arial"
+  | "Arial Black"
+  | "Comic Sans MS"
+  | "Courier New"
+  | "Georgia"
+  | "Impact"
+  | "Lucida Console"
+  | "Lucida Sans Unicode"
+  | "Palatino Linotype"
+  | "Tahoma"
+  | "Times New Roman"
+  | "Trebuchet MS"
+  | "Verdana";
+
 export type Settings = {
   token: string;
   assetDirectory: string;
@@ -19,6 +44,12 @@ export type Settings = {
   loadTime: number;
   useCodeBlockLanguageForCaption: boolean;
   ignoreBeginningNewlines: boolean;
+  customWidth: boolean;
+  targetWidth: number;
+  imageScale: number;
+  smoothing: boolean;
+  generalFontFamily: GeneralFontFamily;
+  codeFontFamily: CodeFontFamily;
 } & MeData;
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -34,7 +65,13 @@ export const DEFAULT_SETTINGS: Settings = {
   createTOC: true,
   useCodeBlockLanguageForCaption: false,
   useDarkTheme: false,
-  ignoreBeginningNewlines: true
+  ignoreBeginningNewlines: true,
+  customWidth: false,
+  targetWidth: 2560,
+  imageScale: 4,
+  codeFontFamily: "Lucida Console",
+  generalFontFamily: "sans-serif",
+  smoothing: true
 };
 
 export class MediumPublishSettingTab extends PluginSettingTab {
@@ -70,6 +107,30 @@ export class MediumPublishSettingTab extends PluginSettingTab {
     this.createItemControl(setting.controlEl);
 
     new Setting(containerEl)
+      .setName("Ignore Beginning Newlines")
+      .setDesc("Ignore the newlines between the title and the content")
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.ignoreBeginningNewlines);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.ignoreBeginningNewlines = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Create TOC")
+      .setDesc("Create a Table of Contents for the post")
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.createTOC);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.createTOC = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    this.createGroup("Image");
+
+    new Setting(containerEl)
       .setName("Use Dark Theme")
       .setDesc(
         "Use dark theme for the generated images. Light theme is used by default for better compatibility with Medium"
@@ -78,17 +139,6 @@ export class MediumPublishSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.useDarkTheme);
         toggle.onChange(async (value) => {
           this.plugin.settings.useDarkTheme = value;
-          await this.plugin.saveSettings();
-        });
-      });
-
-    new Setting(containerEl)
-      .setName("Ignore Beginning Newlines")
-      .setDesc("Ignore the newlines between the title and the content")
-      .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.ignoreBeginningNewlines);
-        toggle.onChange(async (value) => {
-          this.plugin.settings.ignoreBeginningNewlines = value;
           await this.plugin.saveSettings();
         });
       });
@@ -107,6 +157,50 @@ export class MediumPublishSettingTab extends PluginSettingTab {
       });
 
     new Setting(containerEl)
+      .setName("Code Font Family")
+      .setDesc("The font family for the code snippets")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("monospace", "Monospace");
+        dropdown.addOption("Courier New", "Courier New");
+        dropdown.addOption("Consolas", "Consolas");
+        dropdown.addOption("Lucida Console", "Lucida Console");
+        dropdown.addOption("Source Code Pro", "Source Code Pro");
+        dropdown.addOption("Fira Code", "Fira Code");
+        dropdown.addOption("Roboto Mono", "Roboto Mono");
+        dropdown.addOption("Inconsolata", "Inconsolata");
+        dropdown.setValue(this.plugin.settings.codeFontFamily);
+        dropdown.onChange(async (value) => {
+          this.plugin.settings.codeFontFamily = value as CodeFontFamily;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("General Font Family")
+      .setDesc("The font family for the general text")
+      .addDropdown((dropdown) => {
+        dropdown.addOption("sans-serif", "Sans Serif");
+        dropdown.addOption("Arial", "Arial");
+        dropdown.addOption("Arial Black", "Arial Black");
+        dropdown.addOption("Comic Sans MS", "Comic Sans MS");
+        dropdown.addOption("Courier New", "Courier New");
+        dropdown.addOption("Georgia", "Georgia");
+        dropdown.addOption("Impact", "Impact");
+        dropdown.addOption("Lucida Console", "Lucida Console");
+        dropdown.addOption("Lucida Sans Unicode", "Lucida Sans Unicode");
+        dropdown.addOption("Palatino Linotype", "Palatino Linotype");
+        dropdown.addOption("Tahoma", "Tahoma");
+        dropdown.addOption("Times New Roman", "Times New Roman");
+        dropdown.addOption("Trebuchet MS", "Trebuchet MS");
+        dropdown.addOption("Verdana", "Verdana");
+        dropdown.setValue(this.plugin.settings.generalFontFamily);
+        dropdown.onChange(async (value) => {
+          this.plugin.settings.generalFontFamily = value as GeneralFontFamily;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
       .setName("Use Code Block Language for Caption")
       .setDesc(
         "Use the language of the code block as the caption for the image if caption is not provided"
@@ -119,13 +213,76 @@ export class MediumPublishSettingTab extends PluginSettingTab {
         });
       });
 
+    const voidElement = document.createElement("div");
+
+    const targetWidth = new Setting(voidElement)
+      .setName("Target Width")
+      .setDesc("The target width for the images")
+      .addText((text) => {
+        text.setValue(this.plugin.settings.targetWidth.toString());
+        text.onChange(async (value) => {
+          if (!this.plugin.settings.customWidth) {
+            text.setValue(this.plugin.settings.targetWidth.toString());
+            return;
+          }
+          if (value === "") {
+            return;
+          }
+          const match = value.match(/^\d+$/);
+          if (!match) {
+            text.setValue(this.plugin.settings.targetWidth.toString());
+            return;
+          }
+          this.plugin.settings.targetWidth = parseInt(value);
+          await this.plugin.saveSettings();
+        });
+      });
+
+    targetWidth.controlEl.style.display = this.plugin.settings.customWidth
+      ? "block"
+      : "none";
+
     new Setting(containerEl)
-      .setName("Create TOC")
-      .setDesc("Create a Table of Contents for the post")
+      .setName("Custom Width")
+      .setDesc("Use custom width for the images")
       .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.createTOC);
+        toggle.setValue(this.plugin.settings.customWidth);
         toggle.onChange(async (value) => {
-          this.plugin.settings.createTOC = value;
+          this.plugin.settings.customWidth = value;
+          targetWidth.setDisabled(!value);
+          targetWidth.controlEl.style.display = value ? "block" : "none";
+          await this.plugin.saveSettings();
+        });
+      });
+
+    containerEl.appendChild(voidElement);
+
+    new Setting(containerEl)
+      .setName("Image Scale")
+      .setDesc("The scale factor for the images")
+      .addText((text) => {
+        text.setValue(this.plugin.settings.imageScale.toString());
+        text.onChange(async (value) => {
+          if (value === "") {
+            return;
+          }
+          const match = value.match(/^\d+$/);
+          if (!match) {
+            text.setValue(this.plugin.settings.imageScale.toString());
+            return;
+          }
+          this.plugin.settings.imageScale = parseInt(value);
+          await this.plugin.saveSettings();
+        });
+      });
+
+    new Setting(containerEl)
+      .setName("Smoothing")
+      .setDesc("Use image smoothing")
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.smoothing);
+        toggle.onChange(async (value) => {
+          this.plugin.settings.smoothing = value;
           await this.plugin.saveSettings();
         });
       });

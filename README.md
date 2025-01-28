@@ -33,6 +33,8 @@ This plugin allows you to publish your notes to Medium or Dev.to directly from O
 4. Fill in the required fields (title, tags, etc.).
 5. Click "Publish" to publish your note or "Generate" to create Markdown/HTML content.
 
+## Configuration
+
 ### Medium Configuration
 
 `Currently, to have access to the Medium API, you need an access token. Which is currently not available to create unless you already have an access token.`

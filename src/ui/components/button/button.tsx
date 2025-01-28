@@ -6,13 +6,27 @@ export type ButtonIcon = "sync" | "check" | "error" | "cog";
 interface ButtonProps {
   name: string;
   style?: ButtonStyle;
-  icon?: ButtonIcon;
+  disabled?: boolean;
   onClick: () => void;
 }
 
-const Button = ({ name, style = "default", icon, onClick }: ButtonProps) => {
+const Button = ({
+  name,
+  style = "default",
+  onClick,
+  disabled
+}: ButtonProps) => {
   return (
-    <button className={styles[style]} onClick={onClick}>
+    <button
+      className={`${styles["button"]} ${
+        disabled ? styles["disabled"] : styles[style]
+      }`}
+      onClick={() => {
+        if (!disabled) {
+          onClick();
+        }
+      }}
+    >
       <div className={styles["button-group"]}>{name}</div>
     </button>
   );

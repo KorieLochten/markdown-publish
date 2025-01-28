@@ -1,6 +1,7 @@
+import type { Markdown } from "src/types";
 import type { MediumLicense } from "./types";
 
-export type MeData = {
+export type MediumMeData = {
   id: string;
   username: string;
   name: string;
@@ -8,11 +9,28 @@ export type MeData = {
   imageUrl: string;
 };
 
-export type MeResponse = {
-  data: MeData;
+export type MediumMeResponse = {
+  data: MediumMeData;
 };
 
-export type PublishBody = {
+export type DevtoMeData = {
+  id: number;
+  username: string;
+  name: string;
+  summary: string;
+  twitterUsername: string;
+  githubUsername: string;
+  websiteUrl: string;
+  location: string;
+  joinedAt: string;
+  profileImageUrl: string;
+};
+
+export type DevtoMeResponse = {
+  data: DevtoMeData;
+};
+
+export type MediumPublishBody = {
   id: string;
   title: string;
   tags: string[];
@@ -22,6 +40,23 @@ export type PublishBody = {
   publishAt: string;
   license: MediumLicense;
   licenseUrl: string;
+};
+
+export type DevtoPublishBody = {
+  id: number;
+  title: string;
+  description: string;
+  url: string;
+  tags: string[];
+  body_html: string;
+  body_markdown: string;
+};
+
+export type PublishBody = {
+  markdown: string;
+  html: string;
+  medium?: MediumPublishBody;
+  devto?: DevtoPublishBody;
 };
 
 export type PublishResponse = {
@@ -47,4 +82,9 @@ export type PublicationObject = {
 
 export type PublicationResponse = {
   data: PublicationObject[];
+};
+
+export type ContentResponse = {
+  html: string;
+  markdown: Markdown;
 };

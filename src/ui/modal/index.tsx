@@ -12,15 +12,22 @@ class ReactModal extends Modal {
   private root: Root | undefined;
   private plugin: TodoistMarkdownPlugin;
   private modalType: ModalType;
-
-  constructor(plugin: TodoistMarkdownPlugin, type: ModalType) {
+  private site?: "Medium" | "Dev.to";
+  constructor(
+    plugin: TodoistMarkdownPlugin,
+    type: ModalType,
+    site?: "Medium" | "Dev.to",
+    onClose?: () => void
+  ) {
     super(plugin.app);
     this.plugin = plugin;
     this.modalType = type;
+    this.site = site;
+    if (onClose) this.onClose = onClose;
+    this.root = createRoot(this.contentEl);
   }
 
   onOpen() {
-    this.root = createRoot(this.contentEl);
     this.root.render(
       <PluginProvider plugin={this.plugin}>
         {this.getModalContent()}
@@ -35,7 +42,7 @@ class ReactModal extends Modal {
   getModalContent(): ReactNode {
     switch (this.modalType) {
       case "TokenValidatorModal":
-        return <TokenValidatorModal modal={this} />;
+        return <TokenValidatorModal modal={this} site={this.site} />;
       case "PublishModal":
         return <PublishModal />;
     }
@@ -44,7 +51,9 @@ class ReactModal extends Modal {
 
 export const createReactModal = (
   plugin: TodoistMarkdownPlugin,
-  modalType: ModalType
+  modalType: ModalType,
+  site?: "Medium" | "Dev.to",
+  onClose?: () => void
 ) => {
-  return new ReactModal(plugin, modalType);
+  return new ReactModal(plugin, modalType, site, onClose);
 };

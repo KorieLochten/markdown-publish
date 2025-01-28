@@ -1,3 +1,7 @@
+.button {
+  transition: background-color 0.2s;
+}
+
 .primary {
   background-color: hsl(
     var(--accent-h),
@@ -18,4 +22,9 @@
   display: flex;
   gap: 0.5rem;
   align-items: center;
+}
+
+.disabled {
+  background-color: var(--background-modifier-border);
+  cursor: not-allowed;
 }

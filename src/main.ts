@@ -1,40 +1,29 @@
 import {
   addIcon,
   App,
-  editorLivePreviewField,
   MarkdownView,
   Notice,
   Plugin,
   PluginManifest
 } from "obsidian";
 import { createServices, type Services } from "./services";
-import {
-  DEFAULT_SETTINGS,
-  MediumPublishSettingTab,
-  Settings
-} from "./settings";
+import { DEFAULT_SETTINGS, PublishSettingTab, Settings } from "./settings";
 import { createReactModal } from "./ui/modal";
-import { getMediumIcon } from "./utils";
 
-export default class MediumPublishPlugin extends Plugin {
+export default class MdBlogger extends Plugin {
   services: Services;
   settings: Settings = DEFAULT_SETTINGS;
   constructor(app: App, pluginManifest: PluginManifest) {
     super(app, pluginManifest);
 
     this.services = createServices(this);
-    this.addSettingTab(new MediumPublishSettingTab(this));
+    this.addSettingTab(new PublishSettingTab(this));
   }
 
   async onload() {
     await this.loadSettings();
-    addIcon("medium", getMediumIcon());
 
-    if (!(await this.services.api.validateToken())) {
-      createReactModal(this, "TokenValidatorModal").open();
-    }
-
-    this.addRibbonIcon("medium", "Publish to Medium", async () => {
+    this.addRibbonIcon("book-up", "Publish Blog", async () => {
       const currentFile = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (currentFile) {
         const element = document.querySelector(
@@ -51,7 +40,11 @@ export default class MediumPublishPlugin extends Plugin {
           return;
         }
 
-        createReactModal(this, "PublishModal").open();
+        if (this.settings.validDevtoKey || this.settings.validMediumKey) {
+          createReactModal(this, "PublishModal").open();
+        } else {
+          new Notice("Please enter valid API keys in the settings");
+        }
       } else {
         new Notice("No markdown file is being viewed");
         return;

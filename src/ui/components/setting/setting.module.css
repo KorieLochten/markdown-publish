@@ -1,0 +1,25 @@
+.setting {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+}
+
+.setting-item-border {
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.setting-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.setting-name {
+  color: var(--text-normal);
+  font-size: var(--font-text-size);
+}
+
+.setting-desc {
+  color: var(--color-base-70);
+  font-size: var(--font-smallest);
+}

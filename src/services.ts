@@ -1,12 +1,12 @@
-import { MediumPublishAPI } from "./api";
+import { PublishAPI } from "./api";
 import MediumPublishPlugin from "./main";
 
 export type Services = {
-  api: MediumPublishAPI;
+  api: PublishAPI;
 };
 
 export const createServices = (plugin: MediumPublishPlugin): Services => {
   return {
-    api: new MediumPublishAPI(plugin)
+    api: new PublishAPI(plugin)
   };
 };

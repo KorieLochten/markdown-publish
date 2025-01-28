@@ -1,15 +1,8 @@
-export const getMediumIcon = () => {
-  return `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1770 1000" fill="white">
-        <circle cx="500" cy="500" r="500"/>
-        <ellipse ry="475" rx="250" cy="501" cx="1296"/>
-        <ellipse cx="1682" cy="502" rx="88" ry="424"/>
-    </svg>`;
-};
-
 import html2canvas from "html2canvas";
-import { App } from "obsidian";
+import { App, htmlToMarkdown } from "obsidian";
 import { CSSProperties } from "react";
+import { HtmlMarkdownContent, Markdown } from "./types";
+import { parser } from "./parser";
 
 export const parseResponse = <T>(response: string): T => {
   return JSON.parse(response);
@@ -106,19 +99,17 @@ export const isValidLanguage = (language: string): boolean => {
 
 export const createLinkElement = (href: string, text: string) => {
   const a = document.createElement("a");
-  let isAnchor = href[0] === "#";
-  a.href = isAnchor ? href.replace(/%20| /g, "-") : href;
   a.innerText = text;
+  a.href = href;
   a.target = text.includes("http") ? "_blank" : "_self";
 
   return a;
 };
 
 export const saveHtmlAsPng = async (
-  directory: string,
   app: App,
   element: HTMLElement,
-  fileName: string,
+  filePath: string,
   targetWidth: number | null,
   scale: number,
   smoothing: boolean,
@@ -160,19 +151,7 @@ export const saveHtmlAsPng = async (
       Buffer.from(base64Data, "base64")
     ).buffer;
 
-    if (app.vault.getFolderByPath(directory) === null) {
-      await app.vault.createFolder(directory);
-    }
-
-    const filePath = directory + "/" + fileName;
-
-    const file = app.vault.getFileByPath(filePath);
-
-    if (file) {
-      await app.vault.modifyBinary(file, arrayBuffer);
-    } else {
-      await app.vault.createBinary(filePath, arrayBuffer);
-    }
+    await app.vault.adapter.writeBinary(filePath, arrayBuffer);
 
     return { width: targetWidth, height: targetHeight };
   } catch (error) {
@@ -192,11 +171,19 @@ export const createImage = (src: string, alt: string): HTMLElement => {
   const img = new Image();
   const caption = document.createElement("figcaption");
   caption.className = "imageCaption";
-  img.src = src;
+  img.setAttribute("_src", src);
   img.alt = alt;
   picture.appendChild(img);
   figure.appendChild(caption);
   return figure;
+};
+
+export const createImageMarkdown = (
+  src: string,
+  alt: string,
+  caption?: string
+): string => {
+  return `![${alt}](${src}${caption ? ` "${caption}"` : ""})`;
 };
 
 export const separateImages = (element: HTMLElement): HTMLElement[] => {
@@ -260,7 +247,7 @@ export const ensureEveryElementHasStyle = (
 
 type TOCItem = {
   level: number;
-  element: HTMLElement;
+  element?: HTMLElement;
   children: TOCItem[];
 };
 
@@ -280,22 +267,81 @@ export const createHiddenParagraph = (id?: string): HTMLElement => {
   return paragraph;
 };
 
-export const createTOC = (
+export const createSpan = (text: string): HTMLElement => {
+  const span = document.createElement("span");
+  span.innerText = text;
+  return span;
+};
+
+const renderTOC = (
   element: HTMLElement,
-  excluded?: HTMLElement
-): HTMLElement | null => {
-  const tocContainer = createEl("pre");
-  const toc = createEl("code");
-  toc.innerHTML = `<strong>Table of Contents</strong>\n`;
-  tocContainer.setAttribute("data-code-block-mode", "0");
+  items: TOCItem[],
+  markdown: string,
+  useNumberedList: boolean,
+  container?: HTMLElement
+): string => {
+  items.forEach((item, index) => {
+    const span = createEl("span");
+    span.appendText(
+      "\t".repeat(item.level - 1) +
+        `${useNumberedList ? `${index + 1}.` : "-"} `
+    );
 
-  tocContainer.appendChild(toc);
+    let originalId: string;
+    let id: string;
+    let url: string;
 
-  const firstHeader = element.querySelector("h1");
-  if (!firstHeader) return toc;
+    if (item.element) {
+      originalId = item.element.getAttribute("original-id");
+      id = item.element.getAttribute("toc-id");
+      url = "#" + id;
+      item.element.setAttribute("name", id);
+      item.element.setAttribute("id", id);
+    }
 
-  const index = Array.from(element.children).indexOf(firstHeader);
+    if (originalId && id && url) {
+      const anchorsWithHash = element.querySelectorAll(`a[href*="#"]`);
+      Array.from(anchorsWithHash)
+        .filter((a) => {
+          return (
+            a.getAttribute("href").toLowerCase() ===
+            `#${originalId.toLowerCase()}`
+          );
+        })
+        .forEach((a) => {
+          a.setAttribute("href", url);
+        });
+    }
 
+    span.appendChild(
+      url
+        ? createLinkElement(url, item.element.textContent.trim())
+        : createSpan("[ ]")
+    );
+
+    span.appendText("\n");
+    if (container) container.appendChild(span);
+
+    markdown += `\n${
+      "\t".repeat(item.level - 1) +
+      `${useNumberedList ? `${index + 1}.` : "-"} `
+    } ${url ? `[${item.element.textContent.trim()}](${url})` : "[ ]"} `;
+
+    if (item.children.length > 0) {
+      markdown = renderTOC(
+        element,
+        item.children,
+        markdown,
+        useNumberedList,
+        container
+      );
+    }
+  });
+
+  return markdown;
+};
+
+export const createTOCItems = (element: HTMLElement, index = 0): TOCItem[] => {
   let stack: TOCItem[] = [];
   let headings: TOCItem[] = [];
   let currentLevel = 0;
@@ -319,11 +365,8 @@ export const createTOC = (
   for (let i = index; i < element.children.length; i++) {
     const child = element.children[i];
     if (child instanceof HTMLHeadingElement) {
-      if (excluded && child === excluded) {
-        continue;
-      }
       const headingContent = child.textContent.trim();
-      const headingId = headingContent.replaceAll(" ", "-");
+      const headingId = encodeUriComponentWithParentheses(headingContent);
       const level = parseInt(child.tagName[1]);
 
       if (level === 1 && stack.length > 0) {
@@ -338,6 +381,23 @@ export const createTOC = (
       };
 
       if (level > currentLevel) {
+        let diff = level - currentLevel - 1;
+        for (let i = 0; i < diff; i++) {
+          if (stack.length > 0) {
+            stack[stack.length - 1].children.push({
+              level: currentLevel + i + 1,
+              children: []
+            });
+
+            stack.push(stack[stack.length - 1].children[0]);
+          } else {
+            stack.push({
+              level: currentLevel + i + 1,
+              children: []
+            });
+          }
+        }
+
         if (stack.length > 0) {
           stack[stack.length - 1].children.push(tocItem);
         }
@@ -364,44 +424,48 @@ export const createTOC = (
     headings.push(stack[0]);
   }
 
-  if (headings.length === 0) {
-    return null;
-  }
+  return headings;
+};
 
-  const renderTOC = (items: TOCItem[], container: HTMLElement) => {
-    items.forEach((item, index) => {
-      const span = createEl("span");
-      span.appendText("\t".repeat(item.level - 1) + `${index + 1}.`);
+export const createMarkdownTOC = (
+  markdown: string,
+  useNumberedList: boolean
+): string => {
+  const element = createDiv();
+  element.innerHTML = markdown;
 
-      const originalId = item.element.getAttribute("original-id");
-      const id = item.element.getAttribute("toc-id");
-      const url = "#" + id;
-      item.element.setAttribute("name", id);
+  const headings = createTOCItems(element);
 
-      const anchorsWithHash = element.querySelectorAll(`a[href*="#"]`);
-      const anchors = Array.from(anchorsWithHash).filter((a) => {
-        return (
-          a.getAttribute("href").toLowerCase() ===
-          `#${originalId.toLowerCase()}`
-        );
-      });
-      anchors.forEach((a) => {
-        a.setAttribute("href", url);
-      });
+  if (headings.length === 0) return markdown;
 
-      span.appendChild(createLinkElement(url, item.element.textContent.trim()));
-      span.appendText("\n");
-      container.appendChild(span);
+  let tocMarkdown = "## Table of Contents\n";
 
-      if (item.children.length > 0) {
-        renderTOC(item.children, container);
-      }
-    });
-  };
+  tocMarkdown = renderTOC(element, headings, tocMarkdown, useNumberedList);
 
-  renderTOC(headings, toc);
+  return `${tocMarkdown}\n\n${element.innerHTML}`;
+};
 
-  return tocContainer;
+export const createHTMLTOC = (
+  element: HTMLElement,
+  useNumberedList: boolean,
+  index: number
+): HTMLElement => {
+  const html = createEl("pre");
+  let tocMarkdown = "## Table of Contents\n\n";
+  const toc = createEl("code");
+  toc.innerHTML = `<strong>Table of Contents</strong>\n`;
+  html.setAttribute("data-code-block-mode", "0");
+
+  html.appendChild(toc);
+
+  const firstHeader = element.querySelector("h1");
+  if (!firstHeader) return html;
+
+  const headings = createTOCItems(element, index);
+
+  renderTOC(element, headings, tocMarkdown, useNumberedList, toc);
+
+  return html;
 };
 
 type CharCheckRules = {
@@ -504,4 +568,77 @@ export const dimensionFromString = (dimension: string): Dimension | null => {
   }
 
   return { width, height };
+};
+
+export const getLevelOfHeading = (heading: HTMLElement): number => {
+  if (heading instanceof HTMLHeadingElement)
+    return parseInt(heading.tagName[1]);
+
+  return 0;
+};
+
+export const isImageFile = (
+  file: string | undefined,
+  extensions = ["png", "jpg", "jpeg", "gif"]
+): boolean => {
+  return file
+    ? extensions.some((extension) => file.endsWith(extension))
+    : false;
+};
+
+export const encodeUriComponentWithParentheses = (str: string): string =>
+  encodeURIComponent(str).replace(/\(/g, "%28").replace(/\)/g, "%29");
+
+export const parseAlteredMarkdown = (markdown: Markdown) => {
+  let { title, subtitle, mainImage, content } = markdown;
+
+  const frontmatter = `${
+    mainImage
+      ? createImageMarkdown(mainImage.url, mainImage.alt, mainImage.caption) +
+        "\n"
+      : ""
+  }${title ? title : ""}${subtitle ? subtitle : ""}`;
+
+  const div = createDiv();
+  div.innerHTML = `${frontmatter}${
+    frontmatter.length > 0 ? "\n" : ""
+  }${content}`;
+  const ids: Record<string, string> = {};
+
+  div.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
+    const level = parseInt(heading.tagName[1]);
+    const id = heading.getAttribute("id");
+    if (id) {
+      ids[id] = heading.getAttribute("data-raw-content");
+    }
+
+    div.replaceChild(
+      document.createTextNode(
+        `${"#".repeat(level)} ${heading.getAttribute("data-raw-markdown")}`
+      ),
+      heading
+    );
+  });
+
+  div.querySelectorAll("img").forEach((img) => {
+    div.replaceChild(
+      document.createTextNode(img.getAttribute("data-raw-markdown")),
+      img
+    );
+  });
+
+  div.querySelectorAll("a").forEach((link) => {
+    div.removeChild(link);
+  });
+
+  content = div.innerHTML;
+
+  for (const id in ids) {
+    content = content.replace(
+      new RegExp(`${id}`, "g"),
+      encodeUriComponentWithParentheses(ids[id])
+    );
+  }
+
+  markdown.content = content;
 };

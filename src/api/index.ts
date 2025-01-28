@@ -1,73 +1,106 @@
-import MediumPublishPlugin from "src/main";
 import { obsidianFetch, RequestParams } from "./fetch";
-import { Notice, TFile } from "obsidian";
+import { normalizePath, Notice, TFile } from "obsidian";
 import {
   createHeader,
-  createHiddenParagraph,
-  createTOC,
+  createHTMLTOC,
+  createMarkdownTOC,
   getImageDimensions,
+  getLevelOfHeading,
+  parseAlteredMarkdown,
   parseResponse,
   removeComments
 } from "../utils";
 import {
+  ContentResponse,
+  DevtoMeResponse,
+  DevtoPublishBody,
   ImageResponse,
-  MeResponse,
+  MediumMeResponse,
+  MediumPublishBody,
   PublicationResponse,
   PublishResponse
 } from "./response";
 import { parser, tokenizer } from "../parser";
+import MdBlogger from "src/main";
+import { PublishConfig } from "./types";
+import { PublishRequest } from "./request";
 
-const url = "https://api.medium.com/v1";
+const medium_url = "https://api.medium.com/v1";
+const devto_url = "https://dev.to/api";
 
-type PublishBody = {
-  title: string;
-  publicationId?: string;
-  contentFormat: "html" | "markdown";
-  tags: string[];
-  publishStatus: "draft" | "public" | "unlisted";
-  notifyFollowers: boolean;
-};
-
-export class MediumPublishAPI {
-  private plugin: MediumPublishPlugin;
-  constructor(plugin: MediumPublishPlugin) {
+export class PublishAPI {
+  private plugin: MdBlogger;
+  constructor(plugin: MdBlogger) {
     this.plugin = plugin;
   }
 
-  async validateToken(token?: string): Promise<boolean> {
+  async validateDevtoToken(token?: string): Promise<boolean> {
     try {
       const request: RequestParams = {
-        url: `${url}/me`,
+        url: `${devto_url}/users/me`,
         method: "GET",
-        headers: this.getHeaders(token ?? this.plugin.settings.token)
+        headers: this.getDevtoHeaders(token ?? this.plugin.settings.devtoToken)
       };
 
       const response = await obsidianFetch(request);
 
-      const { data } = parseResponse<MeResponse>(response.body);
-
       if (response.status === 200) {
-        this.plugin.settings.id = data.id;
-        this.plugin.settings.username = data.username;
-        this.plugin.settings.name = data.name;
-        this.plugin.settings.url = data.url;
-        this.plugin.settings.imageUrl = data.imageUrl;
-
+        const { data } = parseResponse<DevtoMeResponse>(response.body);
+        this.plugin.settings.devtoProfile = data;
+        this.plugin.settings.validDevtoKey = true;
         await this.plugin.saveSettings();
+      } else {
+        this.plugin.settings.validDevtoKey = false;
+        this.plugin.settings.devtoProfile = null;
+        await this.plugin.saveSettings();
+        throw new Error(response.body);
       }
 
       return response.status === 200;
     } catch (error) {
-      new Notice("Error: " + error);
+      new Notice(error);
+      return false;
+    }
+  }
+
+  async validateMediumToken(token?: string): Promise<boolean> {
+    try {
+      const request: RequestParams = {
+        url: `${medium_url}/me`,
+        method: "GET",
+        headers: this.getMediumHeaders(
+          token ?? this.plugin.settings.mediumToken
+        )
+      };
+
+      const response = await obsidianFetch(request);
+
+      if (response.status === 200) {
+        const { data } = parseResponse<MediumMeResponse>(response.body);
+        this.plugin.settings.mediumProfile = data;
+        this.plugin.settings.validMediumKey = true;
+        await this.plugin.saveSettings();
+      } else {
+        this.plugin.settings.validMediumKey = false;
+        this.plugin.settings.mediumProfile = null;
+        await this.plugin.saveSettings();
+        throw new Error(response.body);
+      }
+
+      return response.status === 200;
+    } catch (error) {
+      new Notice(error);
       return false;
     }
   }
 
   async getPublications(): Promise<PublicationResponse | null> {
+    const id = this.plugin.settings.mediumProfile.id;
+    if (!id) return null;
     const request: RequestParams = {
-      url: `${url}/users/${this.plugin.settings.id}/publications`,
+      url: `${medium_url}/users/${id}/publications`,
       method: "GET",
-      headers: this.getHeaders(this.plugin.settings.token)
+      headers: this.getMediumHeaders(this.plugin.settings.mediumToken)
     };
 
     const response = await obsidianFetch(request);
@@ -75,30 +108,47 @@ export class MediumPublishAPI {
     if (response.status === 200) {
       return parseResponse<PublicationResponse>(response.body);
     } else {
-      new Notice("Error: " + response.body);
+      new Notice(response.body);
       return null;
     }
   }
 
-  async publish(
-    body: PublishBody,
-    path: string
-  ): Promise<PublishResponse | null> {
-    let fileName = this.plugin.app.vault.getFileByPath(path).basename;
+  async getContent(
+    path: string,
+    title: string,
+    config: PublishConfig,
+    parse: boolean = false
+  ): Promise<ContentResponse | null> {
+    let fileName = this.plugin.settings.useFilenameAsTitle
+      ? this.plugin.app.vault.getFileByPath(path).basename
+      : title;
     let fileContent = await this.plugin.app.vault.adapter.read(path);
 
-    const html =
-      body.contentFormat === "markdown"
-        ? await parser(
-            tokenizer(removeComments(fileContent)),
-            this.plugin.app,
-            this.plugin.settings
-          )
-        : createDiv(fileContent);
+    let { html, markdown } = await parser(
+      tokenizer(removeComments(fileContent)),
+      this.plugin.app,
+      config,
+      this.plugin.settings
+    );
+
+    if (config.devto && !config.medium) {
+      markdown = {
+        title: `# ${fileName}\n`,
+        subtitle: undefined,
+        ...markdown
+      };
+    } else {
+      markdown = {
+        title: markdown.title ? markdown.title : `# ${fileName}\n`,
+        ...markdown
+      };
+    }
 
     let firstChild = html.firstChild;
     let heading: HTMLElement;
     let firstChildIsBreak = false;
+    let index = 0;
+
     if (
       firstChild instanceof HTMLElement &&
       firstChild.className === "link-block"
@@ -107,69 +157,75 @@ export class MediumPublishAPI {
       firstChild = html.children[1];
     }
 
-    if (firstChild instanceof HTMLHeadingElement) {
-      let level = parseInt(firstChild.tagName[1]);
-      if (level === 1) {
-        heading = firstChild;
-      } else if (level < 5) {
-        if (firstChildIsBreak && html.firstChild instanceof HTMLElement) {
+    if (firstChild instanceof HTMLElement) {
+      let level = getLevelOfHeading(firstChild);
+      if (level > 0) {
+        if (firstChildIsBreak) {
+          html.removeChild(html.firstChild);
           html
-            .querySelectorAll(
-              `a[href="#${html.firstChild.getAttribute("name")}"]`
-            )
+            .querySelectorAll(`a[href="#${firstChild.getAttribute("name")}"]`)
+            .forEach((element: HTMLAnchorElement) => {
+              element.href = `#top`;
+            });
+        }
+        if (level === 1) {
+          heading = firstChild;
+          index = html.indexOf(heading) + 1;
+          let sibling = html.children[index];
+          if (
+            sibling instanceof HTMLElement &&
+            getLevelOfHeading(sibling) > 1
+          ) {
+            index++;
+          }
+        } else if (level > 1) {
+          heading = html.insertBefore(createHeader(fileName), firstChild);
+          index = html.indexOf(heading) + 2;
+        }
+      } else if (
+        firstChild instanceof HTMLElement &&
+        firstChild.tagName == "FIGURE"
+      ) {
+        if (firstChildIsBreak) {
+          html
+            .querySelectorAll(`a[href="#${firstChild.getAttribute("name")}"]`)
             .forEach((element: HTMLAnchorElement) => {
               element.href = `#top`;
             });
           html.removeChild(html.firstChild);
         }
-        heading = html.insertBefore(createHeader(fileName), firstChild);
-      }
-    } else if (
-      firstChild instanceof HTMLElement &&
-      firstChild.tagName == "FIGURE"
-    ) {
-      if (firstChildIsBreak && html.firstChild instanceof HTMLElement) {
-        html
-          .querySelectorAll(
-            `a[href="#${html.firstChild.getAttribute("name")}"]`
-          )
-          .forEach((element: HTMLAnchorElement) => {
-            element.href = `#top`;
-          });
-        html.removeChild(html.firstChild);
-      }
 
-      heading = html.insertAfter(createHeader(fileName), firstChild);
-    } else {
-      heading = html.insertBefore(createHeader(fileName), firstChild);
+        heading = html.insertAfter(createHeader(fileName), firstChild);
+        index = html.indexOf(heading) + 1;
+
+        let sibling = html.children[index];
+        if (sibling instanceof HTMLElement && getLevelOfHeading(sibling) > 1) {
+          index++;
+        }
+      } else {
+        heading = html.insertBefore(createHeader(fileName), firstChild);
+        index = html.indexOf(heading) + 1;
+      }
     }
 
     heading.setAttribute("name", "top");
 
-    const toc: HTMLElement | null = html.querySelector("h1")
-      ? createTOC(html, heading)
-      : null;
+    const tocHtml = createHTMLTOC(
+      html,
+      this.plugin.settings.useNumberedTOC,
+      index
+    );
+    const tocMarkdown = createMarkdownTOC(
+      markdown.content,
+      this.plugin.settings.useNumberedTOC
+    );
 
-    let index = html.indexOf(heading) + 1;
-    if (this.plugin.settings.createTOC && toc) {
-      while (true) {
-        let sibling = html.children[index];
+    if (this.plugin.settings.createTOC && tocHtml && tocMarkdown) {
+      let sibling = html.children[index];
+      html.insertBefore(tocHtml, sibling);
+      index++;
 
-        if (sibling instanceof HTMLHeadingElement) {
-          let level = parseInt(sibling.tagName[1]);
-          if (level === 1) {
-            html.insertBefore(toc, sibling);
-          } else {
-            html.insertAfter(toc, sibling);
-          }
-          break;
-        }
-
-        html.insertBefore(toc, sibling);
-        break;
-      }
-
-      index = html.indexOf(toc) + 1;
+      markdown.content = tocMarkdown;
     }
 
     while (this.plugin.settings.ignoreBeginningNewlines) {
@@ -182,28 +238,110 @@ export class MediumPublishAPI {
       }
     }
 
-    const content = await this.altHtml(html);
-    const div = document.createElement("div");
-    div.innerHTML = content;
+    let links: Record<string, string>;
+    if (this.plugin.settings.validMediumKey) {
+      links = await this.altContent(html);
 
-    const request: RequestParams = {
+      for (const [link, url] of Object.entries(links)) {
+        markdown.content = markdown.content.replace(new RegExp(link, "g"), url);
+      }
+
+      if (markdown.mainImage) {
+        markdown.mainImage.url =
+          links[markdown.mainImage.url] || markdown.mainImage.url;
+      }
+    }
+
+    if (parse) parseAlteredMarkdown(markdown);
+
+    return {
+      html: html.innerHTML,
+      markdown
+    };
+  }
+
+  async publish(
+    body: PublishRequest,
+    path: string
+  ): Promise<PublishResponse | null> {
+    let { html: content, markdown } = await this.getContent(
+      path,
+      body.title,
+      body.config
+    );
+
+    const medium_request: RequestParams = {
       url: body.publicationId
-        ? `${url}/publications/${body.publicationId}/posts`
-        : `${url}/users/${this.plugin.settings.id}/posts`,
+        ? `${medium_url}/publications/${body.publicationId}/posts`
+        : `${medium_url}/users/${this.plugin.settings.mediumProfile.id}/posts`,
       method: "POST",
-      headers: this.getHeaders(this.plugin.settings.token),
+      headers: this.getMediumHeaders(this.plugin.settings.mediumToken),
       body: JSON.stringify({
-        ...body,
-        content,
-        contentFormat: "html"
+        title: body.title,
+        content: content,
+        contentFormat: "html",
+        tags: body.tags,
+        publishStatus: body.publishStatus,
+        license: body.license,
+        canonicalUrl: body.canonicalURL,
+        notifyFollowers: body.notifyFollowers
       })
     };
 
-    const response = await obsidianFetch(request);
+    const devto_request: RequestParams = {
+      url: `${devto_url}/articles`,
+      method: "POST",
+      headers: this.getDevtoHeaders(this.plugin.settings.devtoToken),
+      body: JSON.stringify({
+        article: {
+          title: body.title,
+          body_markdown: markdown.content,
+          published: body.publishStatus === "public",
+          tags: body.tags,
+          series: body.series,
+          canonical_url: body.canonicalURL || "",
+          main_image: markdown.mainImage ? markdown.mainImage.url : ""
+        }
+      })
+    };
 
-    if (response.status === 201) {
-      const body = parseResponse<PublishResponse>(response.body);
-      return body;
+    let mediumResponse = body.config.medium
+      ? await obsidianFetch(medium_request)
+      : null;
+    let devtoResponse = body.config.devto
+      ? await obsidianFetch(devto_request)
+      : null;
+
+    let devResponse: DevtoPublishBody;
+    if (devtoResponse && devtoResponse.status === 201) {
+      devResponse = parseResponse<DevtoPublishBody>(devtoResponse.body);
+    }
+
+    let data: MediumPublishBody;
+    if (mediumResponse && mediumResponse.status === 201) {
+      data = parseResponse<{ data: MediumPublishBody }>(
+        mediumResponse.body
+      ).data;
+    }
+
+    if (mediumResponse || devtoResponse) {
+      parseAlteredMarkdown(markdown);
+      return {
+        data: {
+          html: content,
+          markdown: markdown.content,
+          medium: mediumResponse ? data : null,
+          devto: devtoResponse
+            ? {
+                ...devResponse,
+                url:
+                  body.publishStatus === "public"
+                    ? devResponse.url
+                    : "https://dev.to/dashboard"
+              }
+            : null
+        }
+      };
     }
   }
 
@@ -262,7 +400,7 @@ export class MediumPublishAPI {
         url: "https://api.medium.com/v1/images",
         method: "POST",
         headers: {
-          Authorization: `Bearer ${this.plugin.settings.token}`,
+          Authorization: `Bearer ${this.plugin.settings.mediumToken}`,
           "Content-Type": `multipart/form-data; boundary=${boundary}`
         },
         body: body
@@ -271,19 +409,14 @@ export class MediumPublishAPI {
       if (response.status === 201) {
         return parseResponse<ImageResponse>(response.body);
       } else {
-        new Notice("Error: " + response.body);
+        new Notice(response.body);
       }
     } catch (error) {
-      new Notice("Error: " + error);
+      new Notice(error);
     }
   }
 
-  private async altHtml(html: HTMLElement | string): Promise<string> {
-    if (typeof html === "string") {
-      const div = document.createElement("div");
-      div.innerHTML = html;
-      html = div;
-    }
+  private async altContent(html: HTMLElement): Promise<Record<string, string>> {
     let imageMap: Record<string, number> = {};
     let fileMap = new Map<string, TFile>();
     let dimensionMap: Record<string, string> = {};
@@ -293,16 +426,16 @@ export class MediumPublishAPI {
       width: string = "",
       height: string = ""
     ): Promise<string> => {
-      if (dimensionMap[link + width + height]) {
-        return dimensionMap[link + width + height];
+      let dimensionLink = link + width + height;
+      if (dimensionMap[dimensionLink]) {
+        return dimensionMap[dimensionLink];
       }
 
       let file: TFile;
       if (fileMap.has(link)) {
         file = fileMap.get(link);
       } else {
-        file = this.plugin.app.metadataCache.getFirstLinkpathDest(link, "");
-        fileMap.set(link, file);
+        file = this.plugin.app.vault.getFileByPath(normalizePath(link));
       }
 
       if (
@@ -330,11 +463,16 @@ export class MediumPublishAPI {
     let images = Array.from(html.querySelectorAll("img"));
 
     for (const image of images) {
-      let src = image.getAttribute("src");
-      if (src) {
+      let src = image.getAttribute("_src");
+      if (src && image) {
         const width = image.getAttribute("data-width");
         const height = image.getAttribute("data-height");
-        const link = await checkLink(src, width || "", height || "");
+        const isCodeBlock = image.getAttribute("is-code-block") === "true";
+        const link = await checkLink(
+          src,
+          isCodeBlock ? "" : width || "",
+          isCodeBlock ? "" : height || ""
+        );
 
         if (!image.getAttribute("data-width")) {
           const { width, height } = await getImageDimensions(link);
@@ -351,12 +489,20 @@ export class MediumPublishAPI {
       }
     }
 
-    return html.innerHTML;
+    return dimensionMap;
   }
 
-  private getHeaders(token: string) {
+  private getMediumHeaders(token: string) {
     return {
       Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json"
+    };
+  }
+
+  private getDevtoHeaders(token: string) {
+    return {
+      "api-key": token,
       "Content-Type": "application/json",
       Accept: "application/json"
     };

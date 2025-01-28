@@ -1,0 +1,77 @@
+.suggestion-item {
+  padding: 10px;
+  cursor: pointer;
+}
+
+.suggestion-item:hover {
+  background-color: var(--background-modifier-hover);
+}
+
+:root {
+  --text-color: white;
+}
+
+.checkmark,
+.xmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 25px;
+  height: 25px;
+  padding: 5px;
+  border-radius: 50%;
+  position: relative;
+  color: var(--text-color);
+}
+
+.checkmark {
+  border: 2px solid hsla(var(--accent-h), var(--accent-s), var(--accent-l), 1);
+  background-color: hsla(
+    var(--accent-h),
+    var(--accent-s),
+    var(--accent-l),
+    0.85
+  );
+}
+
+.xmark {
+  border: 2px solid
+    hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.65);
+  background-color: hsla(
+    var(--accent-h),
+    var(--accent-s),
+    var(--accent-l),
+    0.2
+  );
+}
+
+.setting-group {
+  font-size: 1.5rem;
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.setting-container {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  overflow-y: scroll;
+}
+
+.setting-api-key {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.setting-group-container {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.setting-group-children {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-left: 20px;
+}

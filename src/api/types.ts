@@ -8,3 +8,8 @@ export type MediumLicense =
   | "cc-40-by-nc-sa"
   | "cc-40-zero"
   | "public-domain";
+
+export type PublishConfig = {
+  medium: boolean;
+  devto: boolean;
+};

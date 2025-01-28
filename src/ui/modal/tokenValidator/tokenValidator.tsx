@@ -6,35 +6,59 @@ import { Modal } from "obsidian";
 
 interface TokenValidatorModalProps {
   modal: Modal;
+  site: "Medium" | "Dev.to";
 }
 
-export const TokenValidatorModal = ({ modal }: TokenValidatorModalProps) => {
+const Tutorial = ({ site }: { site: "Medium" | "Dev.to" }) => {
+  return (
+    <>
+      {site === "Medium" ? (
+        <div>
+          <h2>Integrate Medium</h2>
+          <ul>
+            <li>
+              Go to your Medium{" "}
+              <a href="https://medium.com/me/settings/security">
+                security and apps
+              </a>
+            </li>
+            <li>
+              Click on the integration tokens and create a new token. Copy the
+              token and paste it below.
+            </li>
+          </ul>
+        </div>
+      ) : (
+        <div>
+          <h2>Integrate Dev.to</h2>
+          <ul>
+            <li>
+              Go to your Dev.to{" "}
+              <a href="https://dev.to/settings/extensions">extensions</a>
+            </li>
+            <li>
+              Click on the <b>Generate new token</b> button. Copy the token and
+              paste it below.
+            </li>
+          </ul>
+        </div>
+      )}
+    </>
+  );
+};
+
+export const TokenValidatorModal = ({
+  modal,
+  site
+}: TokenValidatorModalProps) => {
   return (
     <div className={styles["token-modal"]}>
-      <div>
-        <h2>Integrate Medium</h2>
-        <p className={styles["token-steps"]}>
-          <span>
-            -&gt; Go to your Medium <b>Settings</b> page.{" "}
-          </span>
-          <span>
-            -&gt; Click on the <b>Security and apps</b> tab. On the bottom of
-            the page,
-          </span>
-          <span>
-            -&gt; Click on the <b>Integration tokens</b>. Put any name you want
-            and
-          </span>
-          <span>
-            -&gt; Click on the <b>Get token</b> button. Copy the token and paste
-            it below.
-          </span>
-        </p>
-      </div>
+      <Tutorial site={site} />
       <TokenInput
         onConfirm={() => {
           modal.close();
         }}
+        site={site}
       />
     </div>
   );
@@ -42,24 +66,48 @@ export const TokenValidatorModal = ({ modal }: TokenValidatorModalProps) => {
 
 interface TokenInputProps {
   onConfirm: () => void;
+  site: "Medium" | "Dev.to";
 }
 
-const TokenInput = ({ onConfirm }: TokenInputProps) => {
+const TokenInput = ({ onConfirm, site }: TokenInputProps) => {
   const { plugin } = usePluginContext();
   const [token, setToken] = useState("");
 
   useEffect(() => {
-    setToken(plugin.settings.token || "");
+    setToken(
+      site === "Medium"
+        ? plugin.settings.mediumToken
+        : site === "Dev.to"
+        ? plugin.settings.devtoToken
+        : ""
+    );
   }, []);
 
   const onClick = async () => {
-    await plugin.services.api.validateToken(token).then(async (isHealthy) => {
-      if (isHealthy) {
-        plugin.settings.token = token;
-        await plugin.saveSettings();
-        onConfirm();
-      }
-    });
+    switch (site) {
+      case "Medium":
+        await plugin.services.api
+          .validateMediumToken(token)
+          .then(async (isHealthy) => {
+            if (isHealthy) {
+              plugin.settings.mediumToken = token;
+              await plugin.saveSettings();
+              onConfirm();
+            }
+          });
+        break;
+      case "Dev.to":
+        await plugin.services.api
+          .validateDevtoToken(token)
+          .then(async (isHealthy) => {
+            if (isHealthy) {
+              plugin.settings.devtoToken = token;
+              await plugin.saveSettings();
+              onConfirm();
+            }
+          });
+        break;
+    }
   };
 
   return (

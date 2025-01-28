@@ -8,12 +8,15 @@ import {
   createLinkElement,
   createMarkdownTable,
   dimensionFromString,
+  encodeUriComponentWithParentheses,
   ensureEveryElementHasStyle,
   isValidLanguage,
   saveHtmlAsPng,
   separateImages
 } from "../utils";
 import { Settings } from "src/settings";
+import { HtmlMarkdownContent, Markdown } from "src/types";
+import { PublishConfig } from "src/api/types";
 
 type ImageToken = {
   type: "image";
@@ -64,7 +67,6 @@ type BlockBase = {
 
 type Math = {
   type: "math";
-  content: string;
 };
 
 type List = {
@@ -96,7 +98,6 @@ type CodeBlock = {
 
 type Code = {
   type: "code";
-  content: string;
 };
 
 type Table = {
@@ -188,7 +189,7 @@ export const tokenizer = (markdown: string): Block[] => {
     }
 
     if (validId && idIndex !== -1) {
-      id = content.slice(idIndex + 1);
+      id = content.slice(idIndex);
       content = content.slice(0, idIndex);
     }
 
@@ -499,14 +500,21 @@ export const tokenizer = (markdown: string): Block[] => {
 
             let { content, id } = getId(line.slice(i + 2));
 
-            blocks.push({
-              type: "list",
-              ordered: false,
-              lineStart: index,
-              lineEnd: index,
-              content,
-              id
-            });
+            let lastBlock = blocks[blocks.length - 1];
+
+            if (lastBlock.type === "list" && !lastBlock.ordered) {
+              lastBlock.content += "\n" + content;
+              lastBlock.lineEnd = index;
+            } else {
+              blocks.push({
+                type: "list",
+                ordered: false,
+                lineStart: index,
+                lineEnd: index,
+                content,
+                id
+              });
+            }
             break;
           } else {
             let count = 1;
@@ -546,14 +554,20 @@ export const tokenizer = (markdown: string): Block[] => {
         if (char === "+" && nextChar === " ") {
           flushBuffer();
           let { content, id } = getId(line.slice(i + 2));
-          blocks.push({
-            type: "list",
-            ordered: true,
-            lineStart: index,
-            lineEnd: index,
-            content,
-            id
-          });
+          let lastBlock = blocks[blocks.length - 1];
+          if (lastBlock.type === "list" && !lastBlock.ordered) {
+            lastBlock.content += "\n" + content;
+            lastBlock.lineEnd = index;
+          } else {
+            blocks.push({
+              type: "list",
+              ordered: false,
+              lineStart: index,
+              lineEnd: index,
+              content,
+              id
+            });
+          }
         }
         if (char >= "1" && char <= "9") {
           let count = 1;
@@ -569,14 +583,21 @@ export const tokenizer = (markdown: string): Block[] => {
           if (line[i + count] === "." && line[i + count + 1] === " ") {
             flushBuffer();
             let { content, id } = getId(line.slice(i + count + 2));
-            blocks.push({
-              type: "list",
-              ordered: true,
-              lineStart: index,
-              lineEnd: index,
-              content,
-              id
-            });
+            let lastBlock = blocks[blocks.length - 1];
+
+            if (lastBlock.type === "list" && lastBlock.ordered) {
+              lastBlock.content += "\n" + content;
+              lastBlock.lineEnd = index;
+            } else {
+              blocks.push({
+                type: "list",
+                ordered: true,
+                lineStart: index,
+                lineEnd: index,
+                content,
+                id
+              });
+            }
             break;
           }
         }
@@ -684,14 +705,22 @@ export const tokenizer = (markdown: string): Block[] => {
             } else {
               flushBuffer();
               let { content, id } = getId(line.slice(i + 2));
-              blocks.push({
-                type: "list",
-                ordered: false,
-                lineStart: index,
-                lineEnd: index,
-                content,
-                id
-              });
+
+              let lastBlock = blocks[blocks.length - 1];
+
+              if (lastBlock.type === "list" && !lastBlock.ordered) {
+                lastBlock.content += "\n" + content;
+                lastBlock.lineEnd = index;
+              } else {
+                blocks.push({
+                  type: "list",
+                  ordered: false,
+                  lineStart: index,
+                  lineEnd: index,
+                  content,
+                  id
+                });
+              }
             }
             break;
           } else {
@@ -1570,9 +1599,13 @@ const superscriptMap: { [key: string]: string } = {
 export const parser = async (
   blocks: Block[],
   app: App,
+  config: PublishConfig,
   appSettings: Settings
-): Promise<HTMLElement> => {
-  const container = document.createElement("div");
+): Promise<HtmlMarkdownContent> => {
+  let markdown: Markdown = {
+    content: ""
+  };
+  const container = createDiv();
 
   const currentDocument = document.querySelector(
     ".workspace-leaf.mod-active .workspace-leaf-content .view-content .markdown-source-view .cm-content"
@@ -1582,7 +1615,7 @@ export const parser = async (
   const currentValue = markdownView.editor.getValue();
 
   let footnoteMap: Record<string, string> = {};
-  let footnotes: Record<string, HTMLElement> = {};
+  let footnotes: Record<string, Footnote & BlockBase> = {};
 
   const setId = (block: Block) => {
     const { lastChild: child } = container;
@@ -1598,13 +1631,17 @@ export const parser = async (
         const paragraph = createHiddenParagraph(block.id);
         paragraph.className = "link-block";
         container.appendChild(paragraph);
+        markdown.content += `<a id="${block.id}"></a>\n`;
       }
     }
   };
 
-  for (let block of blocks) {
+  for (let index = 0; index < blocks.length; index++) {
+    const block = blocks[index];
     switch (block.type) {
       case "content": {
+        setId(block);
+
         const paragraph = document.createElement("p");
 
         parseBlock(
@@ -1612,17 +1649,17 @@ export const parser = async (
           app,
           appSettings,
           paragraph,
-          footnoteMap
+          footnoteMap,
+          markdown
         );
 
         const elements = separateImages(paragraph);
-
-        setId(block);
 
         for (let i = 0; i < elements.length; i++) {
           const element = elements[i];
           container.appendChild(element);
         }
+
         break;
       }
       case "heading": {
@@ -1645,44 +1682,81 @@ export const parser = async (
         }
 
         if (validId && idIndex !== -1) {
-          let id = block.content.slice(idIndex + 1);
+          let id = encodeUriComponentWithParentheses(
+            block.content.slice(idIndex + 1)
+          );
           heading.setAttribute("name", id);
+          heading.setAttribute("id", id);
           block.content = block.content.slice(0, idIndex);
         } else {
-          heading.setAttribute("name", block.content);
+          const id = encodeURIComponent(block.content);
+          heading.setAttribute("name", id);
+          heading.setAttribute("id", id);
         }
 
-        parseBlock(
+        let raw_markdown = parseBlock(
           tokenizeBlock(block.content),
           app,
           appSettings,
           heading,
           footnoteMap
         );
+
         container.appendChild(heading);
+        heading.setAttribute("data-raw-markdown", raw_markdown);
+        heading.setAttribute("data-raw-content", heading.textContent.trim());
+
+        if (
+          config.medium &&
+          markdown.content.length === 0 &&
+          block.level === 1 &&
+          !markdown.title &&
+          !markdown.subtitle
+        ) {
+          markdown.title = heading.outerHTML + "\n";
+        } else if (
+          config.medium &&
+          markdown.content.length === 0 &&
+          !markdown.subtitle
+        ) {
+          markdown.subtitle = heading.outerHTML + "\n";
+        } else {
+          markdown.content += heading.outerHTML + "\n";
+        }
+
         break;
       }
       case "list": {
         setId(block);
         const p = document.createElement("p");
         const list = document.createElement(block.ordered ? "ol" : "ul");
-        const item = document.createElement("li");
-        list.appendChild(item);
-        p.appendChild(list);
 
-        parseBlock(
-          tokenizeBlock(block.content),
-          app,
-          appSettings,
-          item,
-          footnoteMap
-        );
+        let items = block.content.split("\n");
+        for (let i = 0; i < items.length; i++) {
+          const item = document.createElement("li");
+          markdown.content += block.ordered ? `${i + 1}.` : "- ";
+
+          parseBlock(
+            tokenizeBlock(items[i]),
+            app,
+            appSettings,
+            item,
+            footnoteMap,
+            markdown
+          );
+
+          list.appendChild(item);
+        }
+
+        markdown.content += "\n";
+        p.appendChild(list);
 
         container.appendChild(p);
         break;
       }
       case "horizontalRule": {
         container.appendChild(document.createElement("hr"));
+        markdown.content += "---\n";
         break;
       }
       case "callout": {
@@ -1708,15 +1782,14 @@ export const parser = async (
           ".cm-callout"
         ) as HTMLElement;
 
-        const imageSrc = `${block.callout}-widget-${block.lineStart}-${block.lineEnd}.png`;
+        const filePath = `/${appSettings.assetDirectory}/${block.callout}-widget-${block.lineStart}-${block.lineEnd}.png`;
 
         if (cmCallout) {
           try {
             const { width, height } = await saveHtmlAsPng(
-              appSettings.assetDirectory,
               app,
               cmCallout,
-              imageSrc,
+              filePath,
               appSettings.customWidth ? appSettings.targetWidth : null,
               appSettings.imageScale,
               appSettings.smoothing,
@@ -1732,7 +1805,7 @@ export const parser = async (
               }
             );
 
-            const imageBlock = createImage(imageSrc, "Code Block Widget");
+            const imageBlock = createImage(filePath, "Code Block Widget");
 
             const image = imageBlock.querySelector("img") as HTMLImageElement;
 
@@ -1741,6 +1814,9 @@ export const parser = async (
             imageBlock.style.maxWidth = `${width}px`;
             imageBlock.style.maxHeight = `${height}px`;
 
+            markdown.content += `![${image.getAttribute(
+              "alt"
+            )}](${filePath})\n`;
             container.appendChild(imageBlock);
           } catch (e) {
             console.error(e);
@@ -1753,12 +1829,14 @@ export const parser = async (
         const blockquote = document.createElement("blockquote");
         blockquote.className = `graf--${block.quoteType}`;
 
+        markdown.content += `${block.quoteType === "blockquote" ? ">" : ">>"} `;
         parseBlock(
           tokenizeBlock(block.content),
           app,
           appSettings,
           blockquote,
-          footnoteMap
+          footnoteMap,
+          markdown
         );
 
         container.appendChild(blockquote);
@@ -1769,13 +1847,17 @@ export const parser = async (
         const codeBlock = document.createElement("pre");
         const code = document.createElement("code");
         codeBlock.appendChild(code);
+        markdown.content += "\t";
+
         parseBlock(
           tokenizeBlock(block.content, true),
           app,
           appSettings,
           code,
-          footnoteMap
+          footnoteMap,
+          markdown
         );
+
         container.appendChild(codeBlock);
         break;
       }
@@ -1804,7 +1886,7 @@ export const parser = async (
             ".cm-embed-block"
           ) as HTMLElement;
 
-          const imageSrc = `${language}-widget-${block.lineStart}-${block.lineEnd}.png`;
+          const filePath = `/${appSettings.assetDirectory}/${block.language}-widget-${block.lineStart}-${block.lineEnd}.png`;
 
           try {
             if (!cmEmbed) {
@@ -1827,10 +1909,9 @@ export const parser = async (
             }
 
             const { width, height } = await saveHtmlAsPng(
-              appSettings.assetDirectory,
               app,
               cmEmbed,
-              imageSrc,
+              filePath,
               appSettings.customWidth ? appSettings.targetWidth : null,
               appSettings.imageScale,
               appSettings.smoothing,
@@ -1868,9 +1949,10 @@ export const parser = async (
               }
             );
 
-            const imageBlock = createImage(imageSrc, "Code Block Widget");
+            const imageBlock = createImage(filePath, "Code Block Widget");
             const image = imageBlock.querySelector("img") as HTMLImageElement;
 
+            let markdown_caption: string;
             if (
               block.caption ||
               (appSettings.useCodeBlockLanguageForCaption &&
@@ -1880,7 +1962,7 @@ export const parser = async (
                 "figcaption"
               ) as HTMLElement;
 
-              parseBlock(
+              markdown_caption = parseBlock(
                 tokenizeBlock(block.caption || language),
                 app,
                 appSettings,
@@ -1891,9 +1973,13 @@ export const parser = async (
 
             image.setAttribute("data-width", width.toString());
             image.setAttribute("data-height", height.toString());
+            image.setAttribute("is-code-block", "true");
             imageBlock.style.maxWidth = `${width}px`;
             imageBlock.style.maxHeight = `${height}px`;
 
+            markdown.content += `![${image.getAttribute("alt")}](${filePath} ${
+              markdown_caption ? `"${markdown_caption}"` : ""
+            })\n`;
             container.appendChild(imageBlock);
           } catch (e) {
             console.error(e);
@@ -1919,6 +2005,7 @@ export const parser = async (
             parseBlock(tokens, app, appSettings, codeBlock, footnoteMap);
           }
 
+          markdown.content += `\`\`\`${language}\n${block.content}\`\`\`\n`;
           container.appendChild(codeBlock);
         }
         break;
@@ -1931,26 +2018,8 @@ export const parser = async (
           display = Object.keys(footnoteMap).length + 1 + "";
           footnoteMap[block.id] = display;
         }
-        const footnote = document.createElement("p");
-        const footnoteId = document.createElement("bold");
-        footnote.appendChild(footnoteId);
 
-        footnote.id = block.id;
-        footnote.setAttribute("name", block.id);
-
-        footnoteId.textContent = `${display}. `;
-        parseBlock(
-          tokenizeBlock(block.content),
-          app,
-          appSettings,
-          footnote,
-          footnoteMap
-        );
-
-        footnote.id = block.id;
-        footnote.setAttribute("name", block.id);
-
-        footnotes[display] = footnote;
+        footnotes[display] = block;
         break;
       }
       case "math": {
@@ -1965,15 +2034,14 @@ export const parser = async (
           ".cm-embed-block"
         ) as HTMLElement;
 
-        const imageSrc = `math-widget-${block.lineStart}-${block.lineEnd}.png`;
+        const filePath = `/${appSettings.assetDirectory}/math-widget-${block.lineStart}-${block.lineEnd}.png`;
 
         if (cmEmbed) {
           try {
             const { width, height } = await saveHtmlAsPng(
-              appSettings.assetDirectory,
               app,
               cmEmbed,
-              imageSrc,
+              filePath,
               appSettings.customWidth ? appSettings.targetWidth : null,
               appSettings.imageScale,
               appSettings.smoothing,
@@ -1990,13 +2058,18 @@ export const parser = async (
               }
             );
 
-            const imageBlock = createImage(imageSrc, "Code Block Widget");
+            const imageBlock = createImage(filePath, "Code Block Widget");
             const image = imageBlock.querySelector("img") as HTMLImageElement;
 
             image.setAttribute("data-width", width.toString());
             image.setAttribute("data-height", height.toString());
+            image.setAttribute("is-code-block", "true");
             imageBlock.style.maxWidth = `${width}px`;
             imageBlock.style.maxHeight = `${height}px`;
+
+            markdown.content += `![${image.getAttribute(
+              "alt"
+            )}](${filePath})\n`;
 
             container.appendChild(imageBlock);
           } catch (e) {
@@ -2007,7 +2080,8 @@ export const parser = async (
       }
       case "table": {
         setId(block);
-        markdownView.editor.setValue(createMarkdownTable(block.body));
+        const markdown_table = createMarkdownTable(block.body);
+        markdownView.editor.setValue(markdown_table);
         markdownView.editor.refresh();
         await new Promise((resolve) =>
           setTimeout(resolve, appSettings.loadTime)
@@ -2018,15 +2092,14 @@ export const parser = async (
         ) as HTMLElement;
 
         if (cmEmbed) {
-          const imageSrc = `obsidian-table-widget-${block.lineStart}-${block.lineEnd}.png`;
+          const filePath = `/${appSettings.assetDirectory}/table-widget-${block.lineStart}-${block.lineEnd}.png`;
           const table = cmEmbed.querySelector("table") as HTMLTableElement;
           table.style.backgroundColor = "var(--background-primary)";
           try {
             const { width, height } = await saveHtmlAsPng(
-              appSettings.assetDirectory,
               app,
               cmEmbed,
-              imageSrc,
+              filePath,
               appSettings.customWidth ? appSettings.targetWidth : null,
               appSettings.imageScale,
               appSettings.smoothing,
@@ -2042,52 +2115,28 @@ export const parser = async (
               }
             );
 
-            const imageBlock = createImage(imageSrc, "Code Block Widget");
+            const imageBlock = createImage(filePath, "Code Block Widget");
 
             const image = imageBlock.querySelector("img") as HTMLImageElement;
             image.setAttribute("data-width", width.toString());
+
             image.setAttribute("data-height", height.toString());
+            image.setAttribute("is-code-block", "true");
             imageBlock.style.maxWidth = `${width}px`;
             imageBlock.style.maxHeight = `${height}px`;
 
             container.appendChild(imageBlock);
+            if (appSettings.convertTableToPng) {
+            } else {
+              markdown.content += markdown_table + "\n";
+            }
           } catch (e) {
             console.error(e);
           }
         }
         break;
       }
-      case "footnote": {
-        let display: string;
-        if (footnoteMap[block.id]) {
-          display = footnoteMap[block.id];
-        } else {
-          display = Object.keys(footnoteMap).length + 1 + "";
-          footnoteMap[block.id] = display;
-        }
-        const footnote = document.createElement("p");
-        const footnoteId = document.createElement("bold");
-        const footnoteContent = document.createElement("code");
-        footnote.appendChild(footnoteId);
-        footnote.appendChild(footnoteContent);
 
-        footnote.id = block.id;
-        footnote.setAttribute("name", block.id);
-
-        footnoteId.textContent = `${display}. `;
-        parseBlock(
-          tokenizeBlock(block.content),
-          app,
-          appSettings,
-          footnoteContent,
-          footnoteMap
-        );
-        footnote.id = block.id;
-        footnote.setAttribute("name", block.id);
-
-        footnotes[display] = footnote;
-        break;
-      }
       case "break": {
         for (let i = 1; i <= block.count; i++) {
           if (i % 2 === 0) {
@@ -2095,6 +2144,7 @@ export const parser = async (
             p.className = "obsidian-break";
             container.appendChild(p);
           }
+          markdown.content += "\n";
         }
         break;
       }
@@ -2107,12 +2157,42 @@ export const parser = async (
 
   if (Object.keys(footnotes).length > 0) {
     container.appendChild(document.createElement("hr"));
+    markdown.content += "---\n";
     for (const key in footnotes) {
-      container.appendChild(footnotes[key]);
+      const block = footnotes[key];
+      const footnote = document.createElement("p");
+      const footnoteId = document.createElement("bold");
+      const footnoteContent = document.createElement("code");
+      footnote.appendChild(footnoteId);
+      footnote.appendChild(footnoteContent);
+
+      footnote.id = block.id;
+      footnote.setAttribute("name", block.id);
+
+      footnoteId.textContent = `${key}. `;
+
+      markdown.content += `[^${key}]:`;
+
+      parseBlock(
+        tokenizeBlock(block.content),
+        app,
+        appSettings,
+        footnoteContent,
+        footnoteMap,
+        markdown
+      );
+
+      footnote.id = block.id;
+      footnote.setAttribute("name", block.id);
+
+      container.appendChild(footnote);
     }
   }
 
-  return container;
+  return {
+    html: container,
+    markdown: markdown
+  };
 };
 
 const parseBlock = (
@@ -2120,9 +2200,11 @@ const parseBlock = (
   app: App,
   appSettings: Settings,
   container: HTMLElement,
-  footnoteMap: Record<string, string>
-): HTMLElement => {
+  footnoteMap: Record<string, string>,
+  markdown: Markdown = { content: "" }
+): string => {
   let elementQueue: HTMLElement[] = [];
+  let content = markdown.content;
 
   const popElement = (tagName: string): boolean => {
     if (
@@ -2139,6 +2221,7 @@ const parseBlock = (
     switch (token.type) {
       case "break": {
         container.appendChild(document.createElement("br"));
+        markdown.content += "\n";
         break;
       }
       case "text": {
@@ -2147,11 +2230,13 @@ const parseBlock = (
         } else {
           container.appendText(token.text);
         }
+        markdown.content += token.text;
         break;
       }
       case "bold": {
         const bold = document.createElement("strong");
         let found = popElement("STRONG");
+        markdown.content += "**";
         if (found) break;
         if (elementQueue.length > 0) {
           if (elementQueue[elementQueue.length - 1].tagName === "STRONG") {
@@ -2169,6 +2254,7 @@ const parseBlock = (
       case "italic": {
         const italic = document.createElement("em");
         let found = popElement("EM");
+        markdown.content += "*";
         if (found) break;
         if (elementQueue.length > 0) {
           if (elementQueue[elementQueue.length - 1].tagName === "EM") {
@@ -2191,25 +2277,30 @@ const parseBlock = (
         } else {
           container.appendChild(link);
         }
+
+        markdown.content += `[${token.text}](${token.url})`;
         break;
       case "image": {
         const imageBlock = createImage(token.url, token.alt);
         const image = imageBlock.querySelector("img") as HTMLImageElement;
-
+        let src = token.url;
         if (token.dimensions) {
           const { width, height } = token.dimensions;
           image.setAttribute("data-width", width.toString());
           image.style.maxWidth = `${width}px`;
+          src += width;
           if (height) {
             image.setAttribute("data-height", height.toString());
             image.style.maxHeight = `${height}px`;
+            src += height;
           }
         }
 
+        let markdown_caption = "";
         if (token.caption) {
           const caption = imageBlock.querySelector("figcaption") as HTMLElement;
 
-          parseBlock(
+          markdown_caption += parseBlock(
             tokenizeBlock(token.caption),
             app,
             appSettings,
@@ -2224,18 +2315,37 @@ const parseBlock = (
           container.appendChild(imageBlock);
         }
 
+        image.setAttribute(
+          "data-raw-markdown",
+          `![${token.alt}](${src}${
+            token.caption ? ` " ${markdown_caption}"` : ""
+          })`
+        );
+
+        if (markdown.content.length == 0) {
+          const image = {
+            url: src,
+            caption: token.caption,
+            alt: token.alt
+          };
+
+          markdown.mainImage = image;
+        } else {
+          markdown.content += image.outerHTML;
+        }
+
         break;
       }
       case "code": {
         const code = document.createElement("code");
         code.setAttribute("data-testid", "editorParagraphText");
-        parseBlock(
+        markdown.content += `\`${parseBlock(
           tokenizeBlock(token.content, true),
           app,
           appSettings,
           code,
           footnoteMap
-        );
+        )}\``;
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendChild(code);
         } else {
@@ -2271,10 +2381,14 @@ const parseBlock = (
           container.appendChild(link);
         }
 
+        markdown.content += `[^${id}]`;
+
         break;
       }
     }
   }
 
-  return container;
+  if (content != markdown.content) markdown.content += "\n";
+
+  return markdown.content;
 };

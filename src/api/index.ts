@@ -447,7 +447,6 @@ export class PublishAPI {
       const imageBody = parseResponse<ImageResponse>(response.body);
 
       if (imageBody.success) {
-        console.log(imageBody.data.link);
         return imageBody;
       } else {
         new Notice(response.body);

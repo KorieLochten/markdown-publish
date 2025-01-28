@@ -6,10 +6,10 @@ import { Modal } from "obsidian";
 
 interface TokenValidatorModalProps {
   modal: Modal;
-  site: "Medium" | "Dev.to";
+  site: "Medium" | "Dev.to" | "Imgur";
 }
 
-const Tutorial = ({ site }: { site: "Medium" | "Dev.to" }) => {
+const Tutorial = ({ site }: { site: "Medium" | "Dev.to" | "Imgur" }) => {
   return (
     <>
       {site === "Medium" ? (
@@ -28,7 +28,7 @@ const Tutorial = ({ site }: { site: "Medium" | "Dev.to" }) => {
             </li>
           </ul>
         </div>
-      ) : (
+      ) : site === "Dev.to" ? (
         <div>
           <h2>Integrate Dev.to</h2>
           <ul>
@@ -39,6 +39,20 @@ const Tutorial = ({ site }: { site: "Medium" | "Dev.to" }) => {
             <li>
               Click on the <b>Generate new token</b> button. Copy the token and
               paste it below.
+            </li>
+          </ul>
+        </div>
+      ) : (
+        <div>
+          <h2>Integrate Imgur</h2>
+          <ul>
+            <li>
+              Go to your Imgur{" "}
+              <a href="https://imgur.com/account/settings/apps">apps</a>
+            </li>
+            <li>
+              Click on the <b>Register an Application</b> button. Copy the
+              Client ID and paste it below.
             </li>
           </ul>
         </div>
@@ -66,7 +80,7 @@ export const TokenValidatorModal = ({
 
 interface TokenInputProps {
   onConfirm: () => void;
-  site: "Medium" | "Dev.to";
+  site: "Medium" | "Dev.to" | "Imgur";
 }
 
 const TokenInput = ({ onConfirm, site }: TokenInputProps) => {
@@ -79,7 +93,7 @@ const TokenInput = ({ onConfirm, site }: TokenInputProps) => {
         ? plugin.settings.mediumToken
         : site === "Dev.to"
         ? plugin.settings.devtoToken
-        : ""
+        : plugin.settings.imgurClientId
     );
   }, []);
 
@@ -102,6 +116,17 @@ const TokenInput = ({ onConfirm, site }: TokenInputProps) => {
           .then(async (isHealthy) => {
             if (isHealthy) {
               plugin.settings.devtoToken = token;
+              await plugin.saveSettings();
+              onConfirm();
+            }
+          });
+        break;
+      case "Imgur":
+        await plugin.services.api
+          .validateImgurClientId(token)
+          .then(async (isHealthy) => {
+            if (isHealthy) {
+              plugin.settings.imgurClientId = token;
               await plugin.saveSettings();
               onConfirm();
             }

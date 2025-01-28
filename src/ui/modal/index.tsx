@@ -12,11 +12,11 @@ class ReactModal extends Modal {
   private root: Root | undefined;
   private plugin: TodoistMarkdownPlugin;
   private modalType: ModalType;
-  private site?: "Medium" | "Dev.to";
+  private site?: "Medium" | "Dev.to" | "Imgur";
   constructor(
     plugin: TodoistMarkdownPlugin,
     type: ModalType,
-    site?: "Medium" | "Dev.to",
+    site?: "Medium" | "Dev.to" | "Imgur",
     onClose?: () => void
   ) {
     super(plugin.app);
@@ -52,7 +52,7 @@ class ReactModal extends Modal {
 export const createReactModal = (
   plugin: TodoistMarkdownPlugin,
   modalType: ModalType,
-  site?: "Medium" | "Dev.to",
+  site?: "Medium" | "Dev.to" | "Imgur",
   onClose?: () => void
 ) => {
   return new ReactModal(plugin, modalType, site, onClose);

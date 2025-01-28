@@ -44,6 +44,7 @@ type GeneralFontFamily =
 export type Settings = {
   mediumToken: string;
   devtoToken: string;
+  imgurClientId: string;
   assetDirectory: string;
   convertCodeToPng: boolean;
   createTOC: boolean;
@@ -64,11 +65,13 @@ export type Settings = {
   devtoProfile?: DevtoMeData;
   validMediumKey?: boolean;
   validDevtoKey?: boolean;
+  validImgurClientId?: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
   mediumToken: "",
   devtoToken: "",
+  imgurClientId: "",
   assetDirectory: "medium-assets",
   loadTime: 100,
   convertCodeToPng: false,
@@ -252,7 +255,7 @@ const SettingNumberInput = ({
 };
 
 interface SettingApiKeyProps {
-  site: "Medium" | "Dev.to";
+  site: "Medium" | "Dev.to" | "Imgur";
 }
 
 const SettingApiKey = ({ site }: SettingApiKeyProps) => {
@@ -260,7 +263,9 @@ const SettingApiKey = ({ site }: SettingApiKeyProps) => {
   const [isValid, setIsValid] = useState<boolean>(
     site === "Medium"
       ? plugin.settings.validMediumKey
-      : plugin.settings.validDevtoKey
+      : site === "Dev.to"
+      ? plugin.settings.validDevtoKey
+      : plugin.settings.validImgurClientId
   );
 
   return (
@@ -272,7 +277,9 @@ const SettingApiKey = ({ site }: SettingApiKeyProps) => {
               setIsValid(
                 site === "Medium"
                   ? plugin.settings.validMediumKey
-                  : plugin.settings.validDevtoKey
+                  : site === "Dev.to"
+                  ? plugin.settings.validDevtoKey
+                  : plugin.settings.validImgurClientId
               );
             }).open();
           }}
@@ -299,6 +306,7 @@ const Settings = () => {
     const validateTokens = async () => {
       await plugin.services.api.validateMediumToken();
       await plugin.services.api.validateDevtoToken();
+      await plugin.services.api.validateImgurClientId();
     };
 
     validateTokens();
@@ -311,6 +319,9 @@ const Settings = () => {
       </SettingGroup>
       <SettingGroup title="Dev.to">
         <SettingApiKey site="Dev.to" />
+      </SettingGroup>
+      <SettingGroup title="Imgur">
+        <SettingApiKey site="Imgur" />
       </SettingGroup>
       <SettingGroup title="General">
         <SettingItem

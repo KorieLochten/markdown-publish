@@ -63,12 +63,42 @@ export type PublishResponse = {
   data: PublishBody;
 };
 
+// Imgur Image
 export type ImageBody = {
-  url: string;
-  md5: string;
+  id: string;
+  deletehash: string;
+  account_id: null | number;
+  account_url: null | string;
+  ad_type: null | number;
+  ad_url: null | string;
+  title: string;
+  description: string;
+  name: string;
+  type: string;
+  width: number;
+  height: number;
+  size: number;
+  views: number;
+  section: null | string;
+  vote: null | string;
+  bandwidth: number;
+  animated: boolean;
+  favorite: boolean;
+  in_gallery: boolean;
+  in_most_viral: boolean;
+  has_sound: boolean;
+  is_ad: boolean;
+  nsfw: null | boolean;
+  link: string;
+  tags: string[];
+  datetime: number;
+  mp4: string;
+  hls: string;
 };
 
 export type ImageResponse = {
+  status: number;
+  success: boolean;
   data: ImageBody;
 };
 

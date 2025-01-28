@@ -69,40 +69,19 @@ export const PublishModal = () => {
   const [series, setSeries] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [license, setLicense] = useState<MediumLicense>("all-rights-reserved");
-  const [init, setInit] = useState(
-    !(plugin.settings.validDevtoKey && plugin.settings.validMediumKey)
-  );
+  const [init, setInit] = useState(false);
   const [data, setData] = useState<PublishBody | null>(null);
 
-  const [publishConfig, setPublishConfig] = useState<PublishConfig>(
-    plugin.settings.validDevtoKey && plugin.settings.validMediumKey
-      ? {
-          medium: false,
-          devto: false
-        }
-      : {
-          medium: plugin.settings.validMediumKey,
-          devto: plugin.settings.validDevtoKey
-        }
-  );
+  const [publishConfig, setPublishConfig] = useState<PublishConfig>({
+    medium: false,
+    devto: false
+  });
 
   useEffect(() => {
     const validateTokens = async () => {
       await plugin.services.api.validateMediumToken();
       await plugin.services.api.validateDevtoToken();
-
-      if (plugin.settings.validDevtoKey && plugin.settings.validMediumKey) {
-        setPublishConfig({
-          medium: false,
-          devto: false
-        });
-      } else {
-        setInit(true);
-        setPublishConfig({
-          medium: plugin.settings.validMediumKey,
-          devto: plugin.settings.validDevtoKey
-        });
-      }
+      await plugin.services.api.validateImgurClientId();
 
       setLoading(false);
     };
@@ -113,11 +92,13 @@ export const PublishModal = () => {
         setTitle(currentView.file.basename);
         setCurrentFile(currentView.file.path);
 
-        await plugin.services.api.getPublications().then((response) => {
-          if (response) {
-            setPublications(response.data);
-          }
-        });
+        if (plugin.settings.validMediumKey) {
+          await plugin.services.api.getPublications().then((response) => {
+            if (response) {
+              setPublications(response.data);
+            }
+          });
+        }
       } else {
         new Notice("No markdown file is being viewed");
       }

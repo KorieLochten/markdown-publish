@@ -17,7 +17,7 @@ This plugin allows you to publish your notes to Medium or Dev.to directly from O
 - Publish notes to Dev.to
 - Generate Markdown content
 - Generate HTML content
-- Support generation of code blocks into images
+- Uploading local images to Imgur
 
 ## Installation
 
@@ -44,3 +44,10 @@ This plugin allows you to publish your notes to Medium or Dev.to directly from O
 1. Visit https://dev.to/settings/extensions
 2. In the "DEV API Keys" section create a new key by adding a description and clicking on "Generate API Key"
 3. You'll see the newly generated key in the same view
+
+### Imgur Configuration
+
+1. Visit https://api.imgur.com/oauth2/addclient
+2. Fill in the required fields and click "Submit"
+3. You'll see the client ID and client secret in the same view
+4. Copy the client ID and add it to the plugin settings

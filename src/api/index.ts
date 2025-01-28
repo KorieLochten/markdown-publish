@@ -27,6 +27,7 @@ import { PublishRequest } from "./request";
 
 const medium_url = "https://api.medium.com/v1";
 const devto_url = "https://dev.to/api";
+const imgur_url = "https://api.imgur.com/3";
 
 export class PublishAPI {
   private plugin: MdBlogger;
@@ -52,6 +53,36 @@ export class PublishAPI {
       } else {
         this.plugin.settings.validDevtoKey = false;
         this.plugin.settings.devtoProfile = null;
+        await this.plugin.saveSettings();
+        throw new Error(response.body);
+      }
+
+      return response.status === 200;
+    } catch (error) {
+      new Notice(error);
+      return false;
+    }
+  }
+
+  async validateImgurClientId(token?: string): Promise<boolean> {
+    try {
+      const request: RequestParams = {
+        url: `${imgur_url}/account/KorieDrakeChaney`,
+        method: "GET",
+        headers: {
+          Authorization: `Client-ID ${
+            token ?? this.plugin.settings.imgurClientId
+          }`
+        }
+      };
+
+      const response = await obsidianFetch(request);
+
+      if (response.status === 200) {
+        this.plugin.settings.validImgurClientId = true;
+        await this.plugin.saveSettings();
+      } else {
+        this.plugin.settings.validImgurClientId = false;
         await this.plugin.saveSettings();
         throw new Error(response.body);
       }
@@ -239,7 +270,7 @@ export class PublishAPI {
     }
 
     let links: Record<string, string>;
-    if (this.plugin.settings.validMediumKey) {
+    if (this.plugin.settings.validImgurClientId) {
       links = await this.altContent(html);
 
       for (const [link, url] of Object.entries(links)) {
@@ -270,47 +301,54 @@ export class PublishAPI {
       body.config
     );
 
-    const medium_request: RequestParams = {
-      url: body.publicationId
-        ? `${medium_url}/publications/${body.publicationId}/posts`
-        : `${medium_url}/users/${this.plugin.settings.mediumProfile.id}/posts`,
-      method: "POST",
-      headers: this.getMediumHeaders(this.plugin.settings.mediumToken),
-      body: JSON.stringify({
-        title: body.title,
-        content: content,
-        contentFormat: "html",
-        tags: body.tags,
-        publishStatus: body.publishStatus,
-        license: body.license,
-        canonicalUrl: body.canonicalURL,
-        notifyFollowers: body.notifyFollowers
-      })
-    };
-
-    const devto_request: RequestParams = {
-      url: `${devto_url}/articles`,
-      method: "POST",
-      headers: this.getDevtoHeaders(this.plugin.settings.devtoToken),
-      body: JSON.stringify({
-        article: {
-          title: body.title,
-          body_markdown: markdown.content,
-          published: body.publishStatus === "public",
-          tags: body.tags,
-          series: body.series,
-          canonical_url: body.canonicalURL || "",
-          main_image: markdown.mainImage ? markdown.mainImage.url : ""
+    const medium_request: RequestParams | null = this.plugin.settings
+      .validMediumKey
+      ? {
+          url: body.publicationId
+            ? `${medium_url}/publications/${body.publicationId}/posts`
+            : `${medium_url}/users/${this.plugin.settings.mediumProfile.id}/posts`,
+          method: "POST",
+          headers: this.getMediumHeaders(this.plugin.settings.mediumToken),
+          body: JSON.stringify({
+            title: body.title,
+            content: content,
+            contentFormat: "html",
+            tags: body.tags,
+            publishStatus: body.publishStatus,
+            license: body.license,
+            canonicalUrl: body.canonicalURL,
+            notifyFollowers: body.notifyFollowers
+          })
         }
-      })
-    };
+      : null;
 
-    let mediumResponse = body.config.medium
-      ? await obsidianFetch(medium_request)
+    const devto_request: RequestParams = this.plugin.settings.validDevtoKey
+      ? {
+          url: `${devto_url}/articles`,
+          method: "POST",
+          headers: this.getDevtoHeaders(this.plugin.settings.devtoToken),
+          body: JSON.stringify({
+            article: {
+              title: body.title,
+              body_markdown: markdown.content,
+              published: body.publishStatus === "public",
+              tags: body.tags,
+              series: body.series,
+              canonical_url: body.canonicalURL || "",
+              main_image: markdown.mainImage ? markdown.mainImage.url : ""
+            }
+          })
+        }
       : null;
-    let devtoResponse = body.config.devto
-      ? await obsidianFetch(devto_request)
-      : null;
+
+    let mediumResponse =
+      body.config.medium && medium_request
+        ? await obsidianFetch(medium_request)
+        : null;
+    let devtoResponse =
+      body.config.devto && devto_request
+        ? await obsidianFetch(devto_request)
+        : null;
 
     let devResponse: DevtoPublishBody;
     if (devtoResponse && devtoResponse.status === 201) {
@@ -397,17 +435,20 @@ export class PublishAPI {
 
     try {
       const response = await obsidianFetch({
-        url: "https://api.medium.com/v1/images",
+        url: `${imgur_url}/image`,
         method: "POST",
         headers: {
-          Authorization: `Bearer ${this.plugin.settings.mediumToken}`,
+          Authorization: `Client-ID ${this.plugin.settings.imgurClientId}`,
           "Content-Type": `multipart/form-data; boundary=${boundary}`
         },
         body: body
       });
 
-      if (response.status === 201) {
-        return parseResponse<ImageResponse>(response.body);
+      const imageBody = parseResponse<ImageResponse>(response.body);
+
+      if (imageBody.success) {
+        console.log(imageBody.data.link);
+        return imageBody;
       } else {
         new Notice(response.body);
       }
@@ -449,8 +490,8 @@ export class PublishAPI {
           );
           if (response) {
             imageMap[link] = imageMap[link] ? imageMap[link] + 1 : 1;
-            dimensionMap[link + width + height] = response.data.url;
-            return response.data.url;
+            dimensionMap[link + width + height] = response.data.link;
+            return response.data.link;
           }
         } catch (error) {
           console.error(error);

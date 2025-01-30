@@ -3,5 +3,8 @@
   "name": "Markdown Publish",
   "description": "Publish your notes to Medium or Dev.to",
   "author": "KorieDrakeChaney",
-  "repo": "KorieLochten/markdown-publish"
+  "repo": "KorieLochten/markdown-publish",
+  "version": "1.0.0",
+  "isDesktopOnly": true,
+  "minAppVersion": "0.16.0"
 }

@@ -1,7 +1,7 @@
 {
-  "id": "md-publish-plugin",
+  "id": "markdown-publish-plugin",
   "name": "Markdown Publish",
   "description": "Publish your notes to Medium or Dev.to",
   "author": "KorieDrakeChaney",
-  "repo": "https://github.com/KorieDrakeChaney/md-publish"
+  "repo": "KorieLochten/markdown-publish"
 }

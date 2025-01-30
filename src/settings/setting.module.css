@@ -25,7 +25,6 @@
 }
 
 .checkmark {
-  border: 2px solid hsla(var(--accent-h), var(--accent-s), var(--accent-l), 1);
   background-color: hsla(
     var(--accent-h),
     var(--accent-s),
@@ -35,8 +34,6 @@
 }
 
 .xmark {
-  border: 2px solid
-    hsla(var(--accent-h), var(--accent-s), var(--accent-l), 0.65);
   background-color: hsla(
     var(--accent-h),
     var(--accent-s),

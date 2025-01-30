@@ -14,7 +14,7 @@ import type { PublicationObject, PublishBody } from "src/api/response";
 import Tag from "./tag";
 import { MediumLicense, PublishConfig } from "src/api/types";
 import { DevtoIcon, MediumIcon } from "src/icons";
-import { FaCheck } from "react-icons/fa6";
+import { FaCheck, FaXmark } from "react-icons/fa6";
 import { PublishRequest } from "src/api/request";
 
 type PublishStatus = "public" | "draft" | "unlisted";
@@ -42,7 +42,7 @@ const Select = ({ onToggle, site, disabled }: SelectProps) => {
       <div
         className={`${styles["select"]} ${isSelected ? styles["active"] : ""} `}
       >
-        <FaCheck />
+        {isSelected ? <FaCheck /> : <FaXmark />}
       </div>
       <div className={styles["select-site"]}>{site}</div>
     </div>
@@ -55,7 +55,7 @@ export const PublishModal = () => {
   const [status, setStatus] = useState<PublishStatus>("public");
   const [tags, setTags] = useState<Record<string, string>>({});
   const [notify, setNotify] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [errorCount, setErrorCount] = useState(0);
   const [currentFile, setCurrentFile] = useState<null | string>(null);
@@ -78,13 +78,6 @@ export const PublishModal = () => {
   });
 
   useEffect(() => {
-    const validateTokens = async () => {
-      await plugin.services.api.validateMediumToken();
-      await plugin.services.api.validateDevtoToken();
-      await plugin.services.api.validateImgurClientId();
-
-      setLoading(false);
-    };
     const load = async () => {
       const currentView =
         plugin.app.workspace.getActiveViewOfType(MarkdownView);
@@ -104,8 +97,6 @@ export const PublishModal = () => {
       }
     };
     load();
-
-    validateTokens();
   }, []);
 
   const onPublish = async () => {
@@ -145,7 +136,7 @@ export const PublishModal = () => {
         setLoading(false);
       });
     } else {
-      const { html, markdown } = await plugin.services.api.getContent(
+      const { html, rawMarkdown } = await plugin.services.api.getContent(
         currentFile,
         title,
         publishConfig,
@@ -154,7 +145,7 @@ export const PublishModal = () => {
 
       setData({
         html,
-        markdown: markdown.content
+        markdown: rawMarkdown
       });
     }
   };
@@ -463,7 +454,7 @@ export const PublishModal = () => {
               >
                 {(publishConfig.medium
                   ? ["public", "draft", "unlisted"]
-                  : ["publish", "unlisted"]
+                  : ["public", "unlisted"]
                 ).map((s: PublishStatus) => (
                   <div
                     key={s}

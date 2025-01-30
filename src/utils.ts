@@ -1,7 +1,7 @@
 import html2canvas from "html2canvas";
 import { App, htmlToMarkdown } from "obsidian";
 import { CSSProperties } from "react";
-import { HtmlMarkdownContent, Markdown } from "./types";
+import { HtmlMarkdownContent, Markdown, TOCItem } from "./types";
 import { parser } from "./parser";
 
 export const parseResponse = <T>(response: string): T => {
@@ -243,12 +243,6 @@ export const ensureEveryElementHasStyle = (
       }
     }
   }
-};
-
-type TOCItem = {
-  level: number;
-  element?: HTMLElement;
-  children: TOCItem[];
 };
 
 export const createHiddenSpan = (): HTMLElement => {
@@ -589,56 +583,14 @@ export const isImageFile = (
 export const encodeUriComponentWithParentheses = (str: string): string =>
   encodeURIComponent(str).replace(/\(/g, "%28").replace(/\)/g, "%29");
 
-export const parseAlteredMarkdown = (markdown: Markdown) => {
-  let { title, subtitle, mainImage, content } = markdown;
-
-  const frontmatter = `${
-    mainImage
-      ? createImageMarkdown(mainImage.url, mainImage.alt, mainImage.caption) +
-        "\n"
-      : ""
-  }${title ? title : ""}${subtitle ? subtitle : ""}`;
-
-  const div = createDiv();
-  div.innerHTML = `${frontmatter}${
-    frontmatter.length > 0 ? "\n" : ""
-  }${content}`;
-  const ids: Record<string, string> = {};
-
-  div.querySelectorAll("h1, h2, h3, h4, h5, h6").forEach((heading) => {
-    const level = parseInt(heading.tagName[1]);
-    const id = heading.getAttribute("id");
-    if (id) {
-      ids[id] = heading.getAttribute("data-raw-content");
-    }
-
-    div.replaceChild(
-      document.createTextNode(
-        `${"#".repeat(level)} ${heading.getAttribute("data-raw-markdown")}`
-      ),
-      heading
-    );
-  });
-
-  div.querySelectorAll("img").forEach((img) => {
-    div.replaceChild(
-      document.createTextNode(img.getAttribute("data-raw-markdown")),
-      img
-    );
-  });
-
-  div.querySelectorAll("a").forEach((link) => {
-    div.removeChild(link);
-  });
-
-  content = div.innerHTML;
-
-  for (const id in ids) {
-    content = content.replace(
-      new RegExp(`${id}`, "g"),
-      encodeUriComponentWithParentheses(ids[id])
-    );
+export const toggleClass = (
+  element: HTMLElement,
+  className: string,
+  add: boolean
+) => {
+  if (add) {
+    element.classList.add(className);
+  } else {
+    element.classList.remove(className);
   }
-
-  markdown.content = content;
 };

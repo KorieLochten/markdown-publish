@@ -98,7 +98,7 @@ export type ImageBody = {
 
 export type ImageResponse = {
   status: number;
-  success: boolean;
+  success?: boolean;
   data: ImageBody;
 };
 
@@ -117,4 +117,5 @@ export type PublicationResponse = {
 export type ContentResponse = {
   html: string;
   markdown: Markdown;
+  rawMarkdown: string;
 };

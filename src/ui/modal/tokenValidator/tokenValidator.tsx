@@ -122,15 +122,9 @@ const TokenInput = ({ onConfirm, site }: TokenInputProps) => {
           });
         break;
       case "Imgur":
-        await plugin.services.api
-          .validateImgurClientId(token)
-          .then(async (isHealthy) => {
-            if (isHealthy) {
-              plugin.settings.imgurClientId = token;
-              await plugin.saveSettings();
-              onConfirm();
-            }
-          });
+        plugin.settings.imgurClientId = token;
+        await plugin.saveSettings();
+        onConfirm();
         break;
     }
   };

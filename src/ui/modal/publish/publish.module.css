@@ -178,15 +178,25 @@
   height: 250px;
   transition: all 0.2s;
   cursor: pointer;
+  background-color: hsla(
+    var(--accent-h),
+    var(--accent-s),
+    var(--accent-l),
+    0.2
+  );
   border: 1px solid var(--background-modifier-border);
 }
 
 .select-item-container.active {
-  background-color: var(--background-secondary);
+  background-color: hsl(
+    var(--accent-h),
+    var(--accent-s),
+    calc(var(--accent-l) - 5%)
+  );
 }
 
 .select-item-container.disabled {
-  background-color: var(--background-modifier-border);
+  background-color: var(--background-primary-alt);
   cursor: not-allowed;
 }
 

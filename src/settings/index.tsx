@@ -1,10 +1,4 @@
-import {
-  DropdownComponent,
-  PluginSettingTab,
-  prepareFuzzySearch,
-  SearchResult,
-  ToggleComponent
-} from "obsidian";
+import { PluginSettingTab, prepareFuzzySearch, SearchResult } from "obsidian";
 import type { DevtoMeData, MediumMeData } from "../api/response";
 import { createReactModal } from "../ui/modal";
 import styles from "./setting.module.css";
@@ -12,7 +6,7 @@ import MdBlogger from "../main";
 import { createRoot, Root } from "react-dom/client";
 import { ChangeEvent, useEffect, useRef, useState } from "react";
 import { PluginProvider, usePluginContext } from "../ui/context";
-import { FaX, FaCheck } from "react-icons/fa6";
+import { FaXmark, FaCheck } from "react-icons/fa6";
 import { SettingItem, Toggle } from "src/ui/components";
 import Dropdown from "src/ui/components/dropdown/dropdown";
 
@@ -65,7 +59,6 @@ export type Settings = {
   devtoProfile?: DevtoMeData;
   validMediumKey?: boolean;
   validDevtoKey?: boolean;
-  validImgurClientId?: boolean;
 };
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -263,9 +256,7 @@ const SettingApiKey = ({ site }: SettingApiKeyProps) => {
   const [isValid, setIsValid] = useState<boolean>(
     site === "Medium"
       ? plugin.settings.validMediumKey
-      : site === "Dev.to"
-      ? plugin.settings.validDevtoKey
-      : plugin.settings.validImgurClientId
+      : plugin.settings.validDevtoKey
   );
 
   return (
@@ -277,18 +268,18 @@ const SettingApiKey = ({ site }: SettingApiKeyProps) => {
               setIsValid(
                 site === "Medium"
                   ? plugin.settings.validMediumKey
-                  : site === "Dev.to"
-                  ? plugin.settings.validDevtoKey
-                  : plugin.settings.validImgurClientId
+                  : plugin.settings.validDevtoKey
               );
             }).open();
           }}
         >
           Set Token
         </button>
-        <div className={isValid ? styles["checkmark"] : styles["xmark"]}>
-          {isValid ? <FaCheck /> : <FaX />}
-        </div>
+        {(site === "Medium" || site === "Dev.to") && (
+          <div className={isValid ? styles["checkmark"] : styles["xmark"]}>
+            {isValid ? <FaCheck /> : <FaXmark />}
+          </div>
+        )}
       </div>
     </SettingItem>
   );
@@ -301,16 +292,6 @@ type FileResult = {
 
 const Settings = () => {
   const { plugin } = usePluginContext();
-
-  useEffect(() => {
-    const validateTokens = async () => {
-      await plugin.services.api.validateMediumToken();
-      await plugin.services.api.validateDevtoToken();
-      await plugin.services.api.validateImgurClientId();
-    };
-
-    validateTokens();
-  }, []);
 
   return (
     <div className={styles["settings-container"]}>

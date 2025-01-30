@@ -14,4 +14,11 @@ export type Markdown = {
 export type HtmlMarkdownContent = {
   html: HTMLElement;
   markdown: Markdown;
+  rawMarkdown: string;
+};
+
+export type TOCItem = {
+  level: number;
+  element?: HTMLElement;
+  children: TOCItem[];
 };

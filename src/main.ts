@@ -23,6 +23,9 @@ export default class MdBlogger extends Plugin {
   async onload() {
     await this.loadSettings();
 
+    await this.services.api.validateMediumToken();
+    await this.services.api.validateDevtoToken();
+
     this.addRibbonIcon("book-up", "Publish Blog", async () => {
       const currentFile = this.app.workspace.getActiveViewOfType(MarkdownView);
       if (currentFile) {

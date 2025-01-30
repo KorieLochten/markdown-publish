@@ -6,7 +6,6 @@ import {
   createMarkdownTOC,
   getImageDimensions,
   getLevelOfHeading,
-  parseAlteredMarkdown,
   parseResponse,
   removeComments
 } from "../utils";
@@ -59,37 +58,6 @@ export class PublishAPI {
 
       return response.status === 200;
     } catch (error) {
-      new Notice(error);
-      return false;
-    }
-  }
-
-  async validateImgurClientId(token?: string): Promise<boolean> {
-    try {
-      const request: RequestParams = {
-        url: `${imgur_url}/account/KorieDrakeChaney`,
-        method: "GET",
-        headers: {
-          Authorization: `Client-ID ${
-            token ?? this.plugin.settings.imgurClientId
-          }`
-        }
-      };
-
-      const response = await obsidianFetch(request);
-
-      if (response.status === 200) {
-        this.plugin.settings.validImgurClientId = true;
-        await this.plugin.saveSettings();
-      } else {
-        this.plugin.settings.validImgurClientId = false;
-        await this.plugin.saveSettings();
-        throw new Error(response.body);
-      }
-
-      return response.status === 200;
-    } catch (error) {
-      new Notice(error);
       return false;
     }
   }
@@ -120,7 +88,6 @@ export class PublishAPI {
 
       return response.status === 200;
     } catch (error) {
-      new Notice(error);
       return false;
     }
   }
@@ -155,7 +122,7 @@ export class PublishAPI {
       : title;
     let fileContent = await this.plugin.app.vault.adapter.read(path);
 
-    let { html, markdown } = await parser(
+    let { html, markdown, rawMarkdown } = await parser(
       tokenizer(removeComments(fileContent)),
       this.plugin.app,
       config,
@@ -262,7 +229,7 @@ export class PublishAPI {
     while (this.plugin.settings.ignoreBeginningNewlines) {
       let sibling = html.children[index];
 
-      if (sibling.className === "obsidian-break") {
+      if (sibling && sibling.className === "obsidian-break") {
         html.removeChild(sibling);
       } else {
         break;
@@ -270,11 +237,16 @@ export class PublishAPI {
     }
 
     let links: Record<string, string>;
-    if (this.plugin.settings.validImgurClientId) {
+    if (this.plugin.settings.imgurClientId.length > 0) {
       links = await this.altContent(html);
 
       for (const [link, url] of Object.entries(links)) {
         markdown.content = markdown.content.replace(new RegExp(link, "g"), url);
+        markdown.content = markdown.content.replace(
+          new RegExp("_src", "g"),
+          "src"
+        );
+        rawMarkdown = rawMarkdown.replace(new RegExp(link, "g"), url);
       }
 
       if (markdown.mainImage) {
@@ -283,10 +255,9 @@ export class PublishAPI {
       }
     }
 
-    if (parse) parseAlteredMarkdown(markdown);
-
     return {
       html: html.innerHTML,
+      rawMarkdown,
       markdown
     };
   }
@@ -295,11 +266,11 @@ export class PublishAPI {
     body: PublishRequest,
     path: string
   ): Promise<PublishResponse | null> {
-    let { html: content, markdown } = await this.getContent(
-      path,
-      body.title,
-      body.config
-    );
+    let {
+      html: content,
+      markdown,
+      rawMarkdown
+    } = await this.getContent(path, body.title, body.config);
 
     const medium_request: RequestParams | null = this.plugin.settings
       .validMediumKey
@@ -363,11 +334,10 @@ export class PublishAPI {
     }
 
     if (mediumResponse || devtoResponse) {
-      parseAlteredMarkdown(markdown);
       return {
         data: {
           html: content,
-          markdown: markdown.content,
+          markdown: rawMarkdown,
           medium: mediumResponse ? data : null,
           devto: devtoResponse
             ? {
@@ -444,10 +414,14 @@ export class PublishAPI {
         body: body
       });
 
-      const imageBody = parseResponse<ImageResponse>(response.body);
+      if (response.status >= 200 && response.status < 300) {
+        const imageBody = parseResponse<ImageResponse>(response.body);
 
-      if (imageBody.success) {
-        return imageBody;
+        if (imageBody.success) {
+          return imageBody;
+        } else {
+          new Notice(response.body);
+        }
       } else {
         new Notice(response.body);
       }

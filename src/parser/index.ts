@@ -1,5 +1,5 @@
 // YukiYokaii
-import { App, MarkdownView } from "obsidian";
+import { App, MarkdownView, Notice } from "obsidian";
 import {
   checkChar,
   convertLanguageToValid,
@@ -12,7 +12,8 @@ import {
   ensureEveryElementHasStyle,
   isValidLanguage,
   saveHtmlAsPng,
-  separateImages
+  separateImages,
+  toggleClass
 } from "../utils";
 import { Settings } from "src/settings";
 import { HtmlMarkdownContent, Markdown } from "src/types";
@@ -35,12 +36,25 @@ type LinkToken = {
   text: string;
 };
 
+type MarkToken = {
+  type: "mark";
+};
+
+type MathToken = {
+  type: "math";
+  content: string;
+};
+
+type DelToken = {
+  type: "del";
+};
+
 type BoldToken = {
-  type: "bold";
+  type: "strong";
 };
 
 type ItalicToken = {
-  type: "italic";
+  type: "em";
 };
 
 type TextToken = {
@@ -858,20 +872,23 @@ export const tokenizer = (markdown: string): Block[] => {
         }
 
         let isMath = false;
+        let isInlineMath = false;
 
         let mathIndex = index;
 
         let mathBuffer = line.slice(0, i);
+
         for (
           let j = i;
           j < (mathIndex < lines.length ? lines[mathIndex].length : 0);
           j++
         ) {
           let line = lines[mathIndex];
-          if (line[j] === "$" && line[j + 1] === "$") {
+          if ((line[j] === "$" && line[j + 1] === "$") || line[j] === "$") {
             isMath = true;
+            isInlineMath = line[j + 1] !== "$";
             let hasEnd = false;
-            let mathCursor = j + 1;
+            let mathCursor = isInlineMath ? j : j + 1;
             let content = "";
 
             buffer += (buffer.length > 0 ? "\n" : "") + mathBuffer;
@@ -886,7 +903,11 @@ export const tokenizer = (markdown: string): Block[] => {
                 l < line.length;
                 l++
               ) {
-                if (line[l] === "$" && line[l + 1] === "$") {
+                if (
+                  !isInlineMath
+                    ? line[l] === "$" && line[l + 1] === "$"
+                    : line[l] === "$"
+                ) {
                   mathCursor = l;
                   hasEnd = true;
                   break;
@@ -915,7 +936,7 @@ export const tokenizer = (markdown: string): Block[] => {
               mathCursor = line.length;
             }
 
-            j = mathCursor + 1;
+            j = mathCursor + (isInlineMath ? 0 : 1);
           } else {
             mathBuffer += line[j];
           }
@@ -942,6 +963,9 @@ export const tokenizer = (markdown: string): Block[] => {
 };
 
 type Token =
+  | MarkToken
+  | MathToken
+  | DelToken
   | ImageToken
   | LinkToken
   | BoldToken
@@ -953,6 +977,9 @@ type Token =
 
 type TokenizerState =
   | "TEXT"
+  | "DOLLAR_SIGN"
+  | "STRIKE"
+  | "EQUALS"
   | "HEADING"
   | "ASTERISK"
   | "UNDER_SCORE"
@@ -1037,6 +1064,10 @@ export const tokenizeBlock = (
       switch (state) {
         case "TEXT":
           switch (char) {
+            case "$":
+              flushBuffer();
+              state = "DOLLAR_SIGN";
+              break;
             case "*":
               flushBuffer();
               state = "ASTERISK";
@@ -1059,6 +1090,14 @@ export const tokenizeBlock = (
                 buffer += "`";
               }
               break;
+            case "~":
+              flushBuffer();
+              state = "STRIKE";
+              break;
+            case "=":
+              flushBuffer();
+              state = "EQUALS";
+              break;
             case "!":
               flushBuffer();
               state = "EXCLAMATION";
@@ -1075,6 +1114,73 @@ export const tokenizeBlock = (
                 flushBuffer();
               }
               break;
+          }
+          break;
+        case "DOLLAR_SIGN":
+          {
+            let hasEnd = false;
+            let mathCursor = cursor;
+            for (let i = cursor; i < line.length; i++) {
+              if (line[i] === "$") {
+                mathCursor = i;
+                hasEnd = true;
+                break;
+              }
+            }
+
+            if (hasEnd) {
+              let content = line.slice(cursor, mathCursor);
+              tokens.push({
+                type: "math",
+                content
+              });
+              cursor = mathCursor;
+              state = "TEXT";
+            } else {
+              cursor -= 1;
+              buffer += "$";
+            }
+          }
+
+          break;
+        case "STRIKE":
+        case "EQUALS":
+          {
+            let count = 1;
+            for (let i = cursor; i < line.length; i++) {
+              if (line[i] === (state == "EQUALS" ? "=" : "~")) {
+                count++;
+              } else {
+                break;
+              }
+            }
+
+            let foundMark =
+              openTokens.findIndex(
+                (token) => token.type === (state == "EQUALS" ? "mark" : "del")
+              ) !== -1;
+
+            let nextChar = line[cursor + count - 1];
+
+            let hasCharacters =
+              (nextChar !== " " && nextChar !== "\t" && nextChar) ||
+              char === " ";
+
+            if (count > 1 && (hasCharacters || foundMark)) {
+              if (foundMark) {
+                closeToken({
+                  type: state == "EQUALS" ? "mark" : "del"
+                });
+              } else {
+                pushAndAdd({
+                  type: state == "EQUALS" ? "mark" : "del"
+                });
+              }
+            } else {
+              buffer += (state == "EQUALS" ? "=" : "~").repeat(count - 1);
+            }
+            cursor += count - 2;
+            state = "TEXT";
           }
           break;
         case "BACKTICKS": {
@@ -1418,9 +1524,9 @@ export const tokenizeBlock = (
           }
 
           let foundItalic =
-            openTokens.findIndex((token) => token.type === "italic") !== -1;
+            openTokens.findIndex((token) => token.type === "em") !== -1;
           let foundBold =
-            openTokens.findIndex((token) => token.type === "bold") !== -1;
+            openTokens.findIndex((token) => token.type === "strong") !== -1;
 
           let extraTarget = count > 3 ? (count % 3 == 0 ? 3 : count % 3) : 0;
           let extras = count > 3 ? 3 : count;
@@ -1435,7 +1541,7 @@ export const tokenizeBlock = (
               if (foundItalic) {
                 if (prevChar !== " ") {
                   closeToken({
-                    type: "italic"
+                    type: "em"
                   });
                 } else {
                   buffer += target;
@@ -1444,14 +1550,14 @@ export const tokenizeBlock = (
                 if (foundBold) {
                   if (prevChar !== " ") {
                     closeToken({
-                      type: "bold"
+                      type: "strong"
                     });
                   } else {
                     buffer += target.repeat(2);
                   }
                 } else if (hasCharacters) {
                   pushAndAdd({
-                    type: "bold"
+                    type: "strong"
                   });
                 } else {
                   buffer += target.repeat(2);
@@ -1460,21 +1566,21 @@ export const tokenizeBlock = (
                 if (foundBold) {
                   if (prevChar !== " ") {
                     closeToken({
-                      type: "bold"
+                      type: "strong"
                     });
                   } else {
                     buffer += target.repeat(2);
                   }
                 } else if (hasCharacters) {
                   pushAndAdd({
-                    type: "bold"
+                    type: "strong"
                   });
                 } else {
                   buffer += target.repeat(2);
                 }
                 if (hasCharacters) {
                   pushAndAdd({
-                    type: "italic"
+                    type: "em"
                   });
                 } else {
                   buffer += target;
@@ -1486,14 +1592,14 @@ export const tokenizeBlock = (
               if (foundBold) {
                 if (prevChar !== " ") {
                   closeToken({
-                    type: "bold"
+                    type: "strong"
                   });
                 } else {
                   buffer += target.repeat(2);
                 }
               } else if (hasCharacters) {
                 pushAndAdd({
-                  type: "bold"
+                  type: "strong"
                 });
               } else {
                 buffer += target.repeat(2);
@@ -1503,14 +1609,14 @@ export const tokenizeBlock = (
               if (foundItalic) {
                 if (prevChar !== " ") {
                   closeToken({
-                    type: "italic"
+                    type: "em"
                   });
                 } else {
                   buffer += target;
                 }
               } else if (hasCharacters) {
                 pushAndAdd({
-                  type: "italic"
+                  type: "em"
                 });
               } else {
                 buffer += target;
@@ -1522,14 +1628,14 @@ export const tokenizeBlock = (
             case 3:
               if (foundBold && hasCharacters) {
                 pushAndAdd({
-                  type: "bold"
+                  type: "strong"
                 });
               } else {
                 buffer += target.repeat(2);
               }
               if (foundItalic && hasCharacters) {
                 pushAndAdd({
-                  type: "italic"
+                  type: "em"
                 });
               } else {
                 buffer += target;
@@ -1538,7 +1644,7 @@ export const tokenizeBlock = (
             case 2:
               if (foundBold && hasCharacters) {
                 pushAndAdd({
-                  type: "bold"
+                  type: "strong"
                 });
               } else {
                 buffer += target.repeat(2);
@@ -1547,7 +1653,7 @@ export const tokenizeBlock = (
             case 1:
               if (foundItalic && hasCharacters) {
                 pushAndAdd({
-                  type: "italic"
+                  type: "em"
                 });
               } else {
                 buffer += target;
@@ -1605,6 +1711,10 @@ export const parser = async (
   let markdown: Markdown = {
     content: ""
   };
+
+  let tocMarkdown = "# Table of Contents\n";
+  let rawMarkdown = "";
+
   const container = createDiv();
 
   const currentDocument = document.querySelector(
@@ -1644,14 +1754,15 @@ export const parser = async (
 
         const paragraph = document.createElement("p");
 
-        parseBlock(
-          tokenizeBlock(block.content),
-          app,
-          appSettings,
-          paragraph,
-          footnoteMap,
-          markdown
-        );
+        rawMarkdown +=
+          parseBlock(
+            tokenizeBlock(block.content),
+            app,
+            appSettings,
+            paragraph,
+            footnoteMap,
+            markdown
+          ) + "\n";
 
         const elements = separateImages(paragraph);
 
@@ -1694,17 +1805,19 @@ export const parser = async (
           heading.setAttribute("id", id);
         }
 
-        let raw_markdown = parseBlock(
-          tokenizeBlock(block.content),
-          app,
-          appSettings,
-          heading,
-          footnoteMap
-        );
+        rawMarkdown +=
+          "#".repeat(block.level) +
+          " " +
+          parseBlock(
+            tokenizeBlock(block.content),
+            app,
+            appSettings,
+            heading,
+            footnoteMap
+          ) +
+          "\n";
 
         container.appendChild(heading);
-        heading.setAttribute("data-raw-markdown", raw_markdown);
-        heading.setAttribute("data-raw-content", heading.textContent.trim());
 
         if (
           config.medium &&
@@ -1724,6 +1837,10 @@ export const parser = async (
           markdown.content += heading.outerHTML + "\n";
         }
 
+        tocMarkdown += `${"  ".repeat(block.level - 1)}- [${
+          heading.textContent
+        }](#${encodeUriComponentWithParentheses(heading.innerText.trim())})\n`;
+
         break;
       }
       case "list": {
@@ -1734,21 +1851,25 @@ export const parser = async (
         let items = block.content.split("\n");
         for (let i = 0; i < items.length; i++) {
           const item = document.createElement("li");
-          markdown.content += block.ordered ? `${i + 1}.` : "- ";
+          let markdown_list = block.ordered ? `${i + 1}. ` : "- ";
+          rawMarkdown += markdown_list;
+          markdown.content += markdown_list;
 
-          parseBlock(
-            tokenizeBlock(items[i]),
-            app,
-            appSettings,
-            item,
-            footnoteMap,
-            markdown
-          );
+          rawMarkdown +=
+            parseBlock(
+              tokenizeBlock(items[i]),
+              app,
+              appSettings,
+              item,
+              footnoteMap,
+              markdown
+            ) + "\n";
 
           list.appendChild(item);
         }
 
         markdown.content += "\n";
+        rawMarkdown += "\n";
         p.appendChild(list);
 
         container.appendChild(p);
@@ -1756,7 +1877,9 @@ export const parser = async (
       }
       case "horizontalRule": {
         container.appendChild(document.createElement("hr"));
-        markdown.content += "---\n";
+        let markdown_rule = "---\n";
+        markdown.content += markdown_rule;
+        rawMarkdown += markdown_rule;
         break;
       }
       case "callout": {
@@ -1794,9 +1917,10 @@ export const parser = async (
               appSettings.imageScale,
               appSettings.smoothing,
               async (doc, element) => {
-                doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
-                doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
+                toggleClass(doc.body, "theme-dark", appSettings.useDarkTheme);
+                toggleClass(doc.body, "theme-light", !appSettings.useDarkTheme);
                 if (element instanceof HTMLElement) {
+                  element.style.overflow = "visible";
                   element.style.backgroundColor = "var(--background-primary)";
                   ensureEveryElementHasStyle(element, {
                     fontFamily: appSettings.generalFontFamily
@@ -1811,12 +1935,12 @@ export const parser = async (
 
             image.setAttribute("data-width", width.toString());
             image.setAttribute("data-height", height.toString());
+            image.setAttribute("is-code-block", "true");
             imageBlock.style.maxWidth = `${width}px`;
             imageBlock.style.maxHeight = `${height}px`;
 
-            markdown.content += `![${image.getAttribute(
-              "alt"
-            )}](${filePath})\n`;
+            markdown.content += image.outerHTML + "\n";
+            rawMarkdown += `![${image.getAttribute("alt")}](${filePath})\n`;
             container.appendChild(imageBlock);
           } catch (e) {
             console.error(e);
@@ -1829,15 +1953,18 @@ export const parser = async (
         const blockquote = document.createElement("blockquote");
         blockquote.className = `graf--${block.quoteType}`;
 
-        markdown.content += `${block.quoteType === "blockquote" ? ">" : ">>"} `;
-        parseBlock(
-          tokenizeBlock(block.content),
-          app,
-          appSettings,
-          blockquote,
-          footnoteMap,
-          markdown
-        );
+        rawMarkdown +=
+          `${block.quoteType === "blockquote" ? ">" : ">>"}` +
+          parseBlock(
+            tokenizeBlock(block.content),
+            app,
+            appSettings,
+            blockquote,
+            footnoteMap
+          ) +
+          "\n";
+
+        markdown.content += blockquote.outerHTML + "\n";
 
         container.appendChild(blockquote);
         break;
@@ -1848,15 +1975,17 @@ export const parser = async (
         const code = document.createElement("code");
         codeBlock.appendChild(code);
         markdown.content += "\t";
+        rawMarkdown += "\t";
 
-        parseBlock(
-          tokenizeBlock(block.content, true),
-          app,
-          appSettings,
-          code,
-          footnoteMap,
-          markdown
-        );
+        rawMarkdown +=
+          parseBlock(
+            tokenizeBlock(block.content, true),
+            app,
+            appSettings,
+            code,
+            footnoteMap,
+            markdown
+          ) + "\n";
 
         container.appendChild(codeBlock);
         break;
@@ -1916,17 +2045,26 @@ export const parser = async (
               appSettings.imageScale,
               appSettings.smoothing,
               async (doc, element) => {
-                doc.body.toggleClass(
+                doc.body.style.height = "fit-content";
+
+                toggleClass(
+                  doc.body,
                   "theme-dark",
                   (block.useLightTheme && !appSettings.useDarkTheme) ||
                     (!block.useLightTheme && appSettings.useDarkTheme)
                 );
-                doc.body.toggleClass(
+
+                toggleClass(
+                  doc.body,
                   "theme-light",
                   (!block.useLightTheme && !appSettings.useDarkTheme) ||
                     (block.useLightTheme && appSettings.useDarkTheme)
                 );
+
                 if (element instanceof HTMLElement) {
+                  element.style.width = "fit-content";
+                  element.style.height = "fit-content";
+                  element.style.overflow = "visible";
                   element.style.backgroundColor = "var(--background-primary)";
                   element.style.color = "var(--text-normal)";
                   ensureEveryElementHasStyle(element, {
@@ -1977,7 +2115,8 @@ export const parser = async (
             imageBlock.style.maxWidth = `${width}px`;
             imageBlock.style.maxHeight = `${height}px`;
 
-            markdown.content += `![${image.getAttribute("alt")}](${filePath} ${
+            markdown.content += image.outerHTML + "\n";
+            rawMarkdown += `![${image.getAttribute("alt")}](${filePath} ${
               markdown_caption ? `"${markdown_caption}"` : ""
             })\n`;
             container.appendChild(imageBlock);
@@ -2005,7 +2144,9 @@ export const parser = async (
             parseBlock(tokens, app, appSettings, codeBlock, footnoteMap);
           }
 
-          markdown.content += `\`\`\`${language}\n${block.content}\`\`\`\n`;
+          let markdown_codeblock = `\`\`\`${language}\n${block.content}\`\`\`\n`;
+          markdown.content += markdown_codeblock;
+          rawMarkdown += markdown_codeblock;
           container.appendChild(codeBlock);
         }
         break;
@@ -2046,10 +2187,18 @@ export const parser = async (
               appSettings.imageScale,
               appSettings.smoothing,
               async (doc, element) => {
-                doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
-                doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
+                if (!doc.body || !doc.body.toggleClass || !element) {
+                  new Notice(`ERROR: uploading ${filePath}`);
+                }
+                doc.body.style.width = "fit-content";
+                doc.body.style.height = "fit-content";
+                toggleClass(doc.body, "theme-dark", appSettings.useDarkTheme);
+                toggleClass(doc.body, "theme-light", !appSettings.useDarkTheme);
 
                 if (element instanceof HTMLElement) {
+                  element.style.width = "fit-content";
+                  element.style.height = "fit-content";
+                  element.style.overflow = "visible";
                   element.style.backgroundColor = "var(--background-primary)";
                   ensureEveryElementHasStyle(element, {
                     color: "var(--text-normal)"
@@ -2067,9 +2216,8 @@ export const parser = async (
             imageBlock.style.maxWidth = `${width}px`;
             imageBlock.style.maxHeight = `${height}px`;
 
-            markdown.content += `![${image.getAttribute(
-              "alt"
-            )}](${filePath})\n`;
+            markdown.content += image.outerHTML + "\n";
+            rawMarkdown += `![${image.getAttribute("alt")}](${filePath})\n`;
 
             container.appendChild(imageBlock);
           } catch (e) {
@@ -2104,8 +2252,8 @@ export const parser = async (
               appSettings.imageScale,
               appSettings.smoothing,
               (doc, element) => {
-                doc.body.toggleClass("theme-dark", appSettings.useDarkTheme);
-                doc.body.toggleClass("theme-light", !appSettings.useDarkTheme);
+                toggleClass(doc.body, "theme-dark", appSettings.useDarkTheme);
+                toggleClass(doc.body, "theme-light", !appSettings.useDarkTheme);
                 if (element instanceof HTMLElement) {
                   element.style.backgroundColor = "var(--background-primary)";
                   ensureEveryElementHasStyle(element, {
@@ -2119,7 +2267,6 @@ export const parser = async (
 
             const image = imageBlock.querySelector("img") as HTMLImageElement;
             image.setAttribute("data-width", width.toString());
-
             image.setAttribute("data-height", height.toString());
             image.setAttribute("is-code-block", "true");
             imageBlock.style.maxWidth = `${width}px`;
@@ -2127,8 +2274,11 @@ export const parser = async (
 
             container.appendChild(imageBlock);
             if (appSettings.convertTableToPng) {
+              markdown.content += image.outerHTML + "\n";
+              rawMarkdown += `![${image.getAttribute("alt")}](${filePath})\n`;
             } else {
               markdown.content += markdown_table + "\n";
+              rawMarkdown += markdown_table + "\n";
             }
           } catch (e) {
             console.error(e);
@@ -2145,6 +2295,7 @@ export const parser = async (
             container.appendChild(p);
           }
           markdown.content += "\n";
+          rawMarkdown += "\n";
         }
         break;
       }
@@ -2158,10 +2309,11 @@ export const parser = async (
   if (Object.keys(footnotes).length > 0) {
     container.appendChild(document.createElement("hr"));
     markdown.content += "---\n";
+    rawMarkdown += "---\n";
     for (const key in footnotes) {
       const block = footnotes[key];
       const footnote = document.createElement("p");
-      const footnoteId = document.createElement("bold");
+      const footnoteId = document.createElement("strong");
       const footnoteContent = document.createElement("code");
       footnote.appendChild(footnoteId);
       footnote.appendChild(footnoteContent);
@@ -2172,8 +2324,9 @@ export const parser = async (
       footnoteId.textContent = `${key}. `;
 
       markdown.content += `[^${key}]:`;
+      rawMarkdown += `[^${key}]:`;
 
-      parseBlock(
+      rawMarkdown += parseBlock(
         tokenizeBlock(block.content),
         app,
         appSettings,
@@ -2191,7 +2344,8 @@ export const parser = async (
 
   return {
     html: container,
-    markdown: markdown
+    markdown: markdown,
+    rawMarkdown: tocMarkdown + "\n" + rawMarkdown
   };
 };
 
@@ -2204,7 +2358,7 @@ const parseBlock = (
   markdown: Markdown = { content: "" }
 ): string => {
   let elementQueue: HTMLElement[] = [];
-  let content = markdown.content;
+  let rawMarkdown = "";
 
   const popElement = (tagName: string): boolean => {
     if (
@@ -2222,8 +2376,10 @@ const parseBlock = (
       case "break": {
         container.appendChild(document.createElement("br"));
         markdown.content += "\n";
+        rawMarkdown += "\n";
         break;
       }
+
       case "text": {
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendText(token.text);
@@ -2231,42 +2387,37 @@ const parseBlock = (
           container.appendText(token.text);
         }
         markdown.content += token.text;
+        rawMarkdown += token.text;
         break;
       }
-      case "bold": {
-        const bold = document.createElement("strong");
-        let found = popElement("STRONG");
-        markdown.content += "**";
+      case "strong":
+      case "em":
+      case "del":
+      case "mark": {
+        const element = document.createElement(token.type);
+        let found = popElement(token.type.toUpperCase());
+        markdown.content += found ? `</${token.type}>` : `<${token.type}>`;
+        rawMarkdown +=
+          token.type === "del"
+            ? "~~"
+            : token.type === "mark"
+            ? "=="
+            : token.type === "em"
+            ? "*"
+            : "**";
+
         if (found) break;
         if (elementQueue.length > 0) {
-          if (elementQueue[elementQueue.length - 1].tagName === "STRONG") {
+          if (elementQueue[elementQueue.length - 1].tagName === token.type) {
             elementQueue.pop();
             break;
           } else {
-            elementQueue[elementQueue.length - 1].appendChild(bold);
+            elementQueue[elementQueue.length - 1].appendChild(element);
           }
         } else {
-          container.appendChild(bold);
+          container.appendChild(element);
         }
-        elementQueue.push(bold);
-        break;
-      }
-      case "italic": {
-        const italic = document.createElement("em");
-        let found = popElement("EM");
-        markdown.content += "*";
-        if (found) break;
-        if (elementQueue.length > 0) {
-          if (elementQueue[elementQueue.length - 1].tagName === "EM") {
-            elementQueue.pop();
-            break;
-          } else {
-            elementQueue[elementQueue.length - 1].appendChild(italic);
-          }
-        } else {
-          container.appendChild(italic);
-        }
-        elementQueue.push(italic);
+        elementQueue.push(element);
         break;
       }
       case "link":
@@ -2277,8 +2428,9 @@ const parseBlock = (
         } else {
           container.appendChild(link);
         }
-
-        markdown.content += `[${token.text}](${token.url})`;
+        let markdown_link = `[${token.text}](${token.url})`;
+        markdown.content += markdown_link;
+        rawMarkdown += markdown_link;
         break;
       case "image": {
         const imageBlock = createImage(token.url, token.alt);
@@ -2315,13 +2467,6 @@ const parseBlock = (
           container.appendChild(imageBlock);
         }
 
-        image.setAttribute(
-          "data-raw-markdown",
-          `![${token.alt}](${src}${
-            token.caption ? ` " ${markdown_caption}"` : ""
-          })`
-        );
-
         if (markdown.content.length == 0) {
           const image = {
             url: src,
@@ -2331,21 +2476,36 @@ const parseBlock = (
 
           markdown.mainImage = image;
         } else {
-          markdown.content += image.outerHTML;
+          let cloned = image.cloneNode(true) as HTMLImageElement;
+          cloned.setAttribute("_src", src);
+          markdown.content += cloned.outerHTML;
         }
+
+        rawMarkdown += `![${token.alt}](${src}${
+          token.caption ? ` " ${markdown_caption}"` : ""
+        })`;
 
         break;
       }
       case "code": {
         const code = document.createElement("code");
         code.setAttribute("data-testid", "editorParagraphText");
-        markdown.content += `\`${parseBlock(
-          tokenizeBlock(token.content, true),
-          app,
-          appSettings,
-          code,
-          footnoteMap
-        )}\``;
+        markdown.content += "`";
+
+        rawMarkdown +=
+          "`" +
+          parseBlock(
+            tokenizeBlock(token.content, true),
+            app,
+            appSettings,
+            code,
+            footnoteMap,
+            markdown
+          ) +
+          "`";
+
+        markdown.content += "`";
+
         if (elementQueue.length > 0) {
           elementQueue[elementQueue.length - 1].appendChild(code);
         } else {
@@ -2381,14 +2541,14 @@ const parseBlock = (
           container.appendChild(link);
         }
 
-        markdown.content += `[^${id}]`;
+        let markdown_footnote = `[^${id}]`;
+        markdown.content += markdown_footnote;
+        rawMarkdown += markdown_footnote;
 
         break;
       }
     }
   }
 
-  if (content != markdown.content) markdown.content += "\n";
-
-  return markdown.content;
+  return rawMarkdown;
 };

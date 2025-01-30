@@ -16,6 +16,7 @@ import { MediumLicense, PublishConfig } from "src/api/types";
 import { DevtoIcon, MediumIcon } from "src/icons";
 import { FaCheck, FaXmark } from "react-icons/fa6";
 import { PublishRequest } from "src/api/request";
+import SettingNumberInput from "src/ui/components/number-input/number-input";
 
 type PublishStatus = "public" | "draft" | "unlisted";
 

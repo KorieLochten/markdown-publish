@@ -2294,8 +2294,8 @@ export const parser = async (
             p.className = "obsidian-break";
             container.appendChild(p);
           }
-          markdown.content += "\n";
-          rawMarkdown += "\n";
+          markdown.content += "\n\n";
+          rawMarkdown += "\n\n";
         }
         break;
       }
@@ -2375,8 +2375,8 @@ const parseBlock = (
     switch (token.type) {
       case "break": {
         container.appendChild(document.createElement("br"));
-        markdown.content += "\n";
-        rawMarkdown += "\n";
+        markdown.content += "\n\n";
+        rawMarkdown += "\n\n";
         break;
       }
 
